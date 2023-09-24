@@ -136,7 +136,16 @@ impl Plugin for GamePlugin {
 fn main() {
     App::new()
         .add_plugins((
-            DefaultPlugins.set(ImagePlugin::default_nearest()),
+            DefaultPlugins
+                .set(ImagePlugin::default_nearest())
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        resolution: (640.0, 480.0).into(),
+                        title: "Innocent Heart".into(),
+                        ..default()
+                    }),
+                    ..default()
+                }),
             GamePlugin,
         ))
         .run();
