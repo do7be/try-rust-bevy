@@ -2,18 +2,12 @@ use bevy::prelude::*;
 use bevy::sprite::collide_aabb::{collide, Collision};
 
 const CHARACTER_SIZE: f32 = 32.;
-const PLAYER_SPEED: f32 = 500.0;
 const PLAYER_JUMP_FORCE: f32 = 44.0;
+const PLAYER_WALK_STEP: f32 = 4.;
 const GRAVITY: f32 = 9.81 * 100.0;
 
 #[derive(Component, Deref, DerefMut)]
 struct Velocity(Vec2);
-
-#[derive(Component)]
-enum Direction {
-    Up,
-    Down,
-}
 
 #[derive(Component)]
 struct Character;
@@ -65,7 +59,8 @@ fn setup(
         animation_indices,
         AnimationTimer(Timer::from_seconds(0.33, TimerMode::Repeating)),
         Player {
-            direction: Direction::Down,
+            direction: Direction::Right,
+            walk: false,
             grounded: true,
         },
         Character,
@@ -153,6 +148,22 @@ fn setup(
         Wall,
         Collider,
     ));
+    commands.spawn((
+        SpriteBundle {
+            sprite: Sprite {
+                color: Color::rgb(0.5, 0.5, 1.0),
+                ..default()
+            },
+            transform: Transform {
+                translation: Vec3::new(0., CHARACTER_SIZE * -4., 0.),
+                scale: Vec3::new(100., 32., 1.0),
+                ..default()
+            },
+            ..default()
+        },
+        Wall,
+        Collider,
+    ));
 }
 
 fn animate_sprite(
@@ -175,9 +186,15 @@ fn animate_sprite(
     }
 }
 
+enum Direction {
+    Left,
+    Right,
+}
+
 #[derive(Component)]
 struct Player {
     direction: Direction,
+    walk: bool,
     grounded: bool,
 }
 
@@ -188,22 +205,15 @@ fn move_player(
 ) {
     for (mut player, mut transform, mut velocity) in &mut query {
         // Walk
-        let mut direction = 0.0;
-
         if keyboard_input.pressed(KeyCode::Left) {
-            direction = -1.0;
             transform.scale.x = -1.0;
-        }
-
-        if keyboard_input.pressed(KeyCode::Right) {
-            direction = 1.0;
+            player.direction = Direction::Left;
+            player.walk = true;
+        } else if keyboard_input.pressed(KeyCode::Right) {
             transform.scale.x = 1.0;
+            player.direction = Direction::Right;
+            player.walk = true;
         }
-
-        let new_player_position =
-            transform.translation.x + direction * PLAYER_SPEED * time_step.period.as_secs_f32();
-
-        transform.translation.x = new_player_position;
 
         // Jump
         if !player.grounded {
@@ -225,10 +235,7 @@ fn apply_velocity(mut query: Query<(&mut Transform, &Velocity)>, time_step: Res<
 #[allow(clippy::type_complexity)]
 fn check_for_collisions(
     mut commands: Commands,
-    mut character_query: Query<
-        (&mut Velocity, &mut Transform, Option<&mut Player>),
-        With<Character>,
-    >,
+    mut player_query: Query<(&mut Velocity, &mut Transform, &mut Player), With<Character>>,
     collider_query: Query<
         (Entity, &Transform, Option<&Wall>),
         (With<Collider>, Without<Character>),
@@ -236,25 +243,27 @@ fn check_for_collisions(
     mut collision_events: EventWriter<CollisionEvent>,
     time_step: Res<FixedTime>,
 ) {
-    let (mut character_velocity, mut character_transform, mut maybe_player) =
-        character_query.single_mut();
-    let character_size = if maybe_player.is_some() {
-        Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE)
-    } else {
-        character_transform.scale.truncate()
+    let (mut player_velocity, mut player_transform, mut player) = player_query.single_mut();
+    let player_size = Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE);
+
+    let mut next_time_translation = player_transform.translation;
+    if !player.grounded {
+        next_time_translation.y += player_velocity.y * time_step.period.as_secs_f32();
+    }
+
+    if player.walk {
+        next_time_translation.x = match player.direction {
+            Direction::Left => player_transform.translation.x - PLAYER_WALK_STEP,
+            Direction::Right => player_transform.translation.x + PLAYER_WALK_STEP,
+        };
+        player.walk = false;
     };
 
+    // TODO: collideだとどうしてもジャンプしながら壁にぶつかったときにTOPやBOTTOMが発生しておかしくなるので独自実装に切り替える
     for (collider_entity, transform, maybe_wall) in &collider_query {
-        let mut next_time_translation = character_transform.translation;
-        if let Some(ref player) = maybe_player {
-            if !player.grounded {
-                next_time_translation.y += character_velocity.y * time_step.period.as_secs_f32();
-            }
-        }
-
         let collision = collide(
             next_time_translation,
-            character_size,
+            player_size,
             transform.translation,
             transform.scale.truncate(),
         );
@@ -266,33 +275,32 @@ fn check_for_collisions(
             }
 
             match collision {
-                // TODO: 左右なら止める処理を入れる
-                Collision::Left => { /* TODO */ }
-                Collision::Right => { /* TODO */ }
+                // 左右なら止める
+                Collision::Left | Collision::Right => {
+                    next_time_translation.x = player_transform.translation.x;
+                }
                 // 落ちた先が壁なら下降をやめる
                 Collision::Top | Collision::Inside => {
-                    if let Some(ref mut player) = maybe_player {
-                        player.grounded = true;
-                        character_velocity.y = 0.;
+                    player.grounded = true;
+                    player_velocity.y = 0.;
 
-                        // めり込まないように位置調整
-                        if next_time_translation.y % CHARACTER_SIZE != 0.0 {
-                            character_transform.translation.y = if next_time_translation.y > 0. {
-                                next_time_translation.y
-                                    + (CHARACTER_SIZE - (next_time_translation.y % CHARACTER_SIZE))
-                            } else {
-                                next_time_translation.y - (next_time_translation.y % CHARACTER_SIZE)
-                            };
-                        }
+                    // めり込まないように位置調整
+                    if next_time_translation.y % CHARACTER_SIZE != 0.0 {
+                        player_transform.translation.y = if next_time_translation.y > 0. {
+                            next_time_translation.y
+                                + (CHARACTER_SIZE - (next_time_translation.y % CHARACTER_SIZE))
+                        } else {
+                            next_time_translation.y - (next_time_translation.y % CHARACTER_SIZE)
+                        };
                     }
                 }
                 // 壁の下側に頭を当てたら上昇をやめる
                 Collision::Bottom => {
-                    character_velocity.y = 0.;
+                    player_velocity.y = 0.;
 
                     // めり込まないように位置調整
                     if next_time_translation.y % CHARACTER_SIZE != 0.0 {
-                        character_transform.translation.y = if next_time_translation.y > 0. {
+                        player_transform.translation.y = if next_time_translation.y > 0. {
                             next_time_translation.y - (next_time_translation.y % CHARACTER_SIZE)
                         } else {
                             next_time_translation.y
@@ -302,6 +310,9 @@ fn check_for_collisions(
                 }
             }
         }
+    }
+    if next_time_translation.x != player_transform.translation.x {
+        player_transform.translation.x = next_time_translation.x;
     }
 }
 
