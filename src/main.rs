@@ -137,6 +137,22 @@ fn setup(
         Wall,
         Collider,
     ));
+    commands.spawn((
+        SpriteBundle {
+            sprite: Sprite {
+                color: Color::rgb(0.5, 0.5, 1.0),
+                ..default()
+            },
+            transform: Transform {
+                translation: Vec3::new(-100., CHARACTER_SIZE * -5., 0.),
+                scale: Vec3::new(100., 32., 1.0),
+                ..default()
+            },
+            ..default()
+        },
+        Wall,
+        Collider,
+    ));
 }
 
 fn animate_sprite(
@@ -253,12 +269,13 @@ fn check_for_collisions(
                 // TODO: 左右なら止める処理を入れる
                 Collision::Left => { /* TODO */ }
                 Collision::Right => { /* TODO */ }
-                // TODO: 上にぶつかったときにワープしないようにするs
-                Collision::Top | Collision::Bottom | Collision::Inside => {
+                // 落ちた先が壁なら下降をやめる
+                Collision::Top | Collision::Inside => {
                     if let Some(ref mut player) = maybe_player {
-                        character_velocity.y = 0.;
                         player.grounded = true;
+                        character_velocity.y = 0.;
 
+                        // めり込まないように位置調整
                         if next_time_translation.y % CHARACTER_SIZE != 0.0 {
                             character_transform.translation.y = if next_time_translation.y > 0. {
                                 next_time_translation.y
@@ -267,6 +284,20 @@ fn check_for_collisions(
                                 next_time_translation.y - (next_time_translation.y % CHARACTER_SIZE)
                             };
                         }
+                    }
+                }
+                // 壁の下側に頭を当てたら上昇をやめる
+                Collision::Bottom => {
+                    character_velocity.y = 0.;
+
+                    // めり込まないように位置調整
+                    if next_time_translation.y % CHARACTER_SIZE != 0.0 {
+                        character_transform.translation.y = if next_time_translation.y > 0. {
+                            next_time_translation.y - (next_time_translation.y % CHARACTER_SIZE)
+                        } else {
+                            next_time_translation.y
+                                - (CHARACTER_SIZE + (next_time_translation.y % CHARACTER_SIZE))
+                        };
                     }
                 }
             }
