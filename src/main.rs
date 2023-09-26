@@ -256,7 +256,34 @@ fn check_for_collisions(
             Direction::Left => player_transform.translation.x - PLAYER_WALK_STEP,
             Direction::Right => player_transform.translation.x + PLAYER_WALK_STEP,
         };
-        player.walk = false;
+
+        // 地面に接しているか検査
+        if player.grounded {
+            // TODO: 独自実装にすることで全Wallを判定しないようにする
+            let mut grounded_translation = player_transform.translation;
+            grounded_translation.y -= 1.;
+            grounded_translation.x = next_time_translation.x;
+
+            let mut fall_flag = true;
+            for (_collider_entity, transform, _maybe_wall) in &collider_query {
+                let collision = collide(
+                    grounded_translation,
+                    player_size,
+                    transform.translation,
+                    transform.scale.truncate(),
+                );
+
+                // 接してる壁があるなら落ちない
+                if collision.is_some() {
+                    collision_events.send_default();
+                    fall_flag = false;
+                }
+            }
+            // 接してる壁がないなら落ちる
+            if fall_flag {
+                player.grounded = false;
+            }
+        }
     };
 
     // TODO: collideだとどうしてもジャンプしながら壁にぶつかったときにTOPやBOTTOMが発生しておかしくなるので独自実装に切り替える
@@ -311,8 +338,12 @@ fn check_for_collisions(
             }
         }
     }
-    if next_time_translation.x != player_transform.translation.x {
+
+    // 左右への移動
+    if player.walk {
+        // 左右移動を反映
         player_transform.translation.x = next_time_translation.x;
+        player.walk = false;
     }
 }
 
