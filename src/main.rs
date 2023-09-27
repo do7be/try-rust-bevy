@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use bevy::sprite::collide_aabb::{collide, Collision};
 
 const CHARACTER_SIZE: f32 = 32.;
+const TILE_SIZE: f32 = 32.;
 const PLAYER_JUMP_FORCE: f32 = 44.0;
 const PLAYER_WALK_STEP: f32 = 4.;
 const GRAVITY: f32 = 9.81 * 100.0;
@@ -53,7 +54,7 @@ fn setup(
         SpriteSheetBundle {
             texture_atlas: texture_atlas_handle,
             sprite: TextureAtlasSprite::new(animation_indices.first),
-            transform: Transform::from_xyz(100., 0., 0.),
+            transform: Transform::from_xyz(TILE_SIZE * 2., TILE_SIZE * 2., 0.),
             ..default()
         },
         animation_indices,
@@ -67,105 +68,60 @@ fn setup(
         Velocity(Vec2::new(0.0, 0.0)),
     ));
 
-    // Wall
-    commands.spawn((
-        SpriteBundle {
-            sprite: Sprite {
-                color: Color::rgb(0.5, 0.5, 1.0),
-                ..default()
-            },
-            transform: Transform {
-                translation: Vec3::new(50., CHARACTER_SIZE, 0.),
-                scale: Vec3::new(100., 32., 1.0),
-                ..default()
-            },
-            ..default()
-        },
-        Wall,
-        Collider,
-    ));
-    commands.spawn((
-        SpriteBundle {
-            sprite: Sprite {
-                color: Color::rgb(0.5, 0.5, 1.0),
-                ..default()
-            },
-            transform: Transform {
-                translation: Vec3::new(100., CHARACTER_SIZE * 4.0, 0.),
-                scale: Vec3::new(100., 32., 1.0),
-                ..default()
-            },
-            ..default()
-        },
-        Wall,
-        Collider,
-    ));
-    commands.spawn((
-        SpriteBundle {
-            sprite: Sprite {
-                color: Color::rgb(0.5, 0.5, 1.0),
-                ..default()
-            },
-            transform: Transform {
-                translation: Vec3::new(0., CHARACTER_SIZE * -2., 0.),
-                scale: Vec3::new(100., 32., 1.0),
-                ..default()
-            },
-            ..default()
-        },
-        Wall,
-        Collider,
-    ));
-    commands.spawn((
-        SpriteBundle {
-            sprite: Sprite {
-                color: Color::rgb(0.5, 0.5, 1.0),
-                ..default()
-            },
-            transform: Transform {
-                translation: Vec3::new(-100., CHARACTER_SIZE * 5., 0.),
-                scale: Vec3::new(100., 32., 1.0),
-                ..default()
-            },
-            ..default()
-        },
-        Wall,
-        Collider,
-    ));
-    commands.spawn((
-        SpriteBundle {
-            sprite: Sprite {
-                color: Color::rgb(0.5, 0.5, 1.0),
-                ..default()
-            },
-            transform: Transform {
-                translation: Vec3::new(-100., CHARACTER_SIZE * -5., 0.),
-                scale: Vec3::new(100., 32., 1.0),
-                ..default()
-            },
-            ..default()
-        },
-        Wall,
-        Collider,
-    ));
-    commands.spawn((
-        SpriteBundle {
-            sprite: Sprite {
-                color: Color::rgb(0.5, 0.5, 1.0),
-                ..default()
-            },
-            transform: Transform {
-                translation: Vec3::new(0., CHARACTER_SIZE * -4., 0.),
-                scale: Vec3::new(100., 32., 1.0),
-                ..default()
-            },
-            ..default()
-        },
-        Wall,
-        Collider,
-    ));
+    let mut map = [
+        "CAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACA",
+        "CAAAAAAABAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABACA",
+        "CAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAACAAAAAAAAABAAAAAAACCCCCCCAAAAAAAAAAAAAAAACA",
+        "CAAAAAAAAAAAAAAAAAACACAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAACAAACCAAAAAAAAAAAAAAAAAAAAACCCAAACCCAAACCCA",
+        "CBAACCCCCAAAAAAAACCCACCCAAAAACAAAAAAAAAAAAAAAAAAAACCAAAAACCAAAAAAAAAACCCAAAAAAABAAAAAAAAAAAAAAAAAACA",
+        "CAAAAAAABAAAAAAAACCCAAAAAAAAACAAAAAAAAAAAAABAAAAAAAAAAAAACAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACA",
+        "CACAAAAAAAAACCCCCCCCAABAAAACCCAAACAAAAAAAAAAAAACCAAAAAACACCCAAAAAAAAAAAAAAAAACCCAAAAAAAAAAABAAAAAACA",
+        "CACCAAAAAAAAAAAACCCCAAAAAAAAACAAABACABAAAAAAAAAACCAAAAACACAAAACCAAAACCCAAAAAAAAAAAAAAAAAAAAAAAAAAACA",
+        "CAACCAAAAAAAAAAACCCCAACCCAAAACAAAAAAACAAAAAAAAAAACCAAAACACAAAAAAAAAAAAAAAABAAAAAAABAAAAAAAAAAAAAAACA",
+        "AAAACCCAAAAAABAACCCCAAAAAAAAACAAAAAAABACAAAAAAAAAAAAACCCACAACAAABAAAAAACCCAAAAAAAAAAAAAAAAAAABAAAACA",
+        "AAAAAACCCAAAAAAACCCCAABAAAACCCAAAACAAAAAAAAAAABAAAAAAAACACAAAAAAAAAAAAAAAAAAACCCAAAAAAAAAAAAAAAAAACA",
+        "AAAAAAAACCCAAAAACCCCAAAACCAAACAAAAAAAAAACAAAAAACCCCCCCCCACCCCCAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAA",
+        "AAAAAAAAAAAAAAAACCCCAAAAAAAAACAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAABAACAAAAAABAAAAAAAAAAAAAAAAAAAAAA",
+        "CCCCCCCCCCCCCCCCCCCCCCCAAAAAACCCCCCCCCCCCCAACCCCCCCCCCCCCCCCCCCAACAAAACAABACAAAACABAACCCCCCCCCCCCCCC",
+        "CCCCCCCCCCCCCCCCCCCCAAAAABAAACCCCCCCCCCCCCAACCCCCCCCCCCCCCCCCCCAACAAAACAAAACAAAACAAAACCCCCCCCCCCCCCC",
+    ];
+    map.reverse();
+
+    for (row, map_str) in map.iter().enumerate() {
+        let map_chars = map_str.chars().collect::<Vec<char>>();
+        for (column, map_char) in map_chars.iter().enumerate() {
+            if *map_char == 'C' {
+                // Wall
+                commands.spawn((
+                    SpriteBundle {
+                        texture: asset_server.load("images/map_3.png"),
+                        transform: Transform {
+                            translation: Vec3::new(
+                                TILE_SIZE * column as f32,
+                                CHARACTER_SIZE * row as f32,
+                                0.,
+                            ),
+                            ..default()
+                        },
+                        ..default()
+                    },
+                    Wall,
+                    Collider,
+                ));
+            }
+        }
+    }
 }
 
+// TODO: プレイヤーの動きについていくようにする
+fn move_camera(query: Query<&Player>, mut camera_query: Query<&mut Transform, With<Camera2d>>) {
+    for player in query.iter() {
+        for mut transform in camera_query.iter_mut() {
+            transform.translation.x = 303.; // TODO: なぜか320じゃない
+            transform.translation.y = 223.; // TODO: なぜか240じゃない
+        }
+    }
+}
 fn animate_sprite(
     time: Res<Time>,
     mut query: Query<(
@@ -245,6 +201,7 @@ fn check_for_collisions(
 ) {
     let (mut player_velocity, mut player_transform, mut player) = player_query.single_mut();
     let player_size = Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE);
+    let tile_size = Vec2::new(TILE_SIZE, TILE_SIZE);
 
     let mut next_time_translation = player_transform.translation;
     if !player.grounded {
@@ -292,7 +249,7 @@ fn check_for_collisions(
             next_time_translation,
             player_size,
             transform.translation,
-            transform.scale.truncate(),
+            tile_size,
         );
         if let Some(collision) = collision {
             collision_events.send_default();
@@ -354,7 +311,7 @@ impl Plugin for GamePlugin {
         app.insert_resource(FixedTime::new_from_secs(1.0 / 60.0))
             .add_event::<CollisionEvent>()
             .add_systems(Startup, setup)
-            .add_systems(Update, animate_sprite)
+            .add_systems(Update, (animate_sprite, move_camera))
             .add_systems(
                 FixedUpdate,
                 (
