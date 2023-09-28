@@ -6,6 +6,7 @@ const TILE_SIZE: f32 = 32.;
 const PLAYER_JUMP_FORCE: f32 = 44.0;
 const PLAYER_WALK_STEP: f32 = 4.;
 const GRAVITY: f32 = 9.81 * 100.0;
+const MAP_WIDTH_TILES: u32 = 100;
 
 #[derive(Component, Deref, DerefMut)]
 struct Velocity(Vec2);
@@ -114,12 +115,18 @@ fn setup(
 }
 
 // TODO: プレイヤーの動きについていくようにする
-fn move_camera(query: Query<&Player>, mut camera_query: Query<&mut Transform, With<Camera2d>>) {
-    for player in query.iter() {
-        for mut transform in camera_query.iter_mut() {
-            transform.translation.x = 303.; // TODO: なぜか320じゃない
-            transform.translation.y = 223.; // TODO: なぜか240じゃない
-        }
+fn move_camera(
+    query: Query<&Transform, (With<Player>, Without<Camera2d>)>,
+    mut camera_query: Query<&mut Transform, With<Camera2d>>,
+) {
+    let player_transform = query.single();
+    for mut transform in camera_query.iter_mut() {
+        transform.translation.x = player_transform
+            .translation
+            .x
+            .max(303.) // TODO: なぜか320じゃない
+            .min(TILE_SIZE * (MAP_WIDTH_TILES - 11) as f32); // なぜかずれている
+        transform.translation.y = 223.; // TODO: なぜか240じゃない
     }
 }
 fn animate_sprite(
