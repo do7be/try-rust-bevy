@@ -250,6 +250,8 @@ fn check_for_collisions(
         }
     };
 
+    let is_fall = player_velocity.y < 0.;
+    let is_jump = player_velocity.y > 0.;
     // TODO: collideだとどうしてもジャンプしながら壁にぶつかったときにTOPやBOTTOMが発生しておかしくなるので独自実装に切り替える
     for (collider_entity, transform, maybe_wall) in &collider_query {
         let collision = collide(
@@ -272,31 +274,35 @@ fn check_for_collisions(
                 }
                 // 落ちた先が壁なら下降をやめる
                 Collision::Top | Collision::Inside => {
-                    player.grounded = true;
-                    player_velocity.y = 0.;
+                    if is_fall {
+                        player.grounded = true;
+                        player_velocity.y = 0.;
 
-                    // めり込まないように位置調整
-                    if next_time_translation.y % CHARACTER_SIZE != 0.0 {
-                        player_transform.translation.y = if next_time_translation.y > 0. {
-                            next_time_translation.y
-                                + (CHARACTER_SIZE - (next_time_translation.y % CHARACTER_SIZE))
-                        } else {
-                            next_time_translation.y - (next_time_translation.y % CHARACTER_SIZE)
-                        };
+                        // めり込まないように位置調整
+                        if next_time_translation.y % CHARACTER_SIZE != 0.0 {
+                            player_transform.translation.y = if next_time_translation.y > 0. {
+                                next_time_translation.y
+                                    + (CHARACTER_SIZE - (next_time_translation.y % CHARACTER_SIZE))
+                            } else {
+                                next_time_translation.y - (next_time_translation.y % CHARACTER_SIZE)
+                            };
+                        }
                     }
                 }
                 // 壁の下側に頭を当てたら上昇をやめる
                 Collision::Bottom => {
-                    player_velocity.y = 0.;
+                    if is_jump {
+                        player_velocity.y = 0.;
 
-                    // めり込まないように位置調整
-                    if next_time_translation.y % CHARACTER_SIZE != 0.0 {
-                        player_transform.translation.y = if next_time_translation.y > 0. {
-                            next_time_translation.y - (next_time_translation.y % CHARACTER_SIZE)
-                        } else {
-                            next_time_translation.y
-                                - (CHARACTER_SIZE + (next_time_translation.y % CHARACTER_SIZE))
-                        };
+                        // めり込まないように位置調整
+                        if next_time_translation.y % CHARACTER_SIZE != 0.0 {
+                            player_transform.translation.y = if next_time_translation.y > 0. {
+                                next_time_translation.y - (next_time_translation.y % CHARACTER_SIZE)
+                            } else {
+                                next_time_translation.y
+                                    - (CHARACTER_SIZE + (next_time_translation.y % CHARACTER_SIZE))
+                            };
+                        }
                     }
                 }
             }
