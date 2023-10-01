@@ -88,9 +88,29 @@ fn setup(
     ];
     map.reverse();
 
+    // マップ描画
     for (row, map_str) in map.iter().enumerate() {
         let map_chars = map_str.chars().collect::<Vec<char>>();
         for (column, map_char) in map_chars.iter().enumerate() {
+            if *map_char == 'A' || *map_char == 'B' {
+                // Background
+                commands.spawn((SpriteBundle {
+                    texture: asset_server.load(if *map_char == 'A' {
+                        "images/map_1.png"
+                    } else {
+                        "images/map_2.png"
+                    }),
+                    transform: Transform {
+                        translation: Vec3::new(
+                            TILE_SIZE * column as f32,
+                            CHARACTER_SIZE * row as f32,
+                            -1.,
+                        ),
+                        ..default()
+                    },
+                    ..default()
+                },));
+            }
             if *map_char == 'C' {
                 // Wall
                 commands.spawn((
@@ -114,7 +134,6 @@ fn setup(
     }
 }
 
-// TODO: プレイヤーの動きについていくようにする
 fn move_camera(
     query: Query<&Transform, (With<Player>, Without<Camera2d>)>,
     mut camera_query: Query<&mut Transform, With<Camera2d>>,
