@@ -209,12 +209,9 @@ fn check_for_collisions(
     let (mut player_velocity, mut player_transform, mut player) = player_query.single_mut();
     let player_size = Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE);
     let tile_size = Vec2::new(TILE_SIZE, TILE_SIZE);
-
     let mut next_time_translation = player_transform.translation;
-    if !player.grounded {
-        next_time_translation.y += player_velocity.y * time_step.period.as_secs_f32();
-    }
 
+    // 横移動の判定
     if player.walk {
         next_time_translation.x = match player.direction {
             Direction::Left => player_transform.translation.x - PLAYER_WALK_STEP,
@@ -250,9 +247,6 @@ fn check_for_collisions(
         }
     };
 
-    let is_fall = player_velocity.y < 0.;
-    let is_jump = player_velocity.y > 0.;
-    // TODO: collideだとどうしてもジャンプしながら壁にぶつかったときにTOPやBOTTOMが発生しておかしくなるので独自実装に切り替える
     for (collider_entity, transform, maybe_wall) in &collider_query {
         let collision = collide(
             next_time_translation,
@@ -272,6 +266,41 @@ fn check_for_collisions(
                 Collision::Left | Collision::Right => {
                     next_time_translation.x = player_transform.translation.x;
                 }
+                Collision::Top | Collision::Bottom | Collision::Inside => {}
+            }
+        }
+    }
+
+    // 左右への移動
+    if player.walk {
+        // 左右移動を反映
+        player_transform.translation.x = next_time_translation.x;
+        player.walk = false;
+    }
+
+    // 縦移動の判定
+    if !player.grounded {
+        next_time_translation.y += player_velocity.y * time_step.period.as_secs_f32();
+    }
+
+    let is_fall = player_velocity.y < 0.;
+    let is_jump = player_velocity.y > 0.;
+    // TODO: collideだとどうしてもジャンプしながら壁にぶつかったときにTOPやBOTTOMが発生しておかしくなるので独自実装に切り替える
+    for (collider_entity, transform, maybe_wall) in &collider_query {
+        let collision = collide(
+            next_time_translation,
+            player_size,
+            transform.translation,
+            tile_size,
+        );
+        if let Some(collision) = collision {
+            collision_events.send_default();
+
+            if maybe_wall.is_some() {
+                // TODO
+            }
+
+            match collision {
                 // 落ちた先が壁なら下降をやめる
                 Collision::Top | Collision::Inside => {
                     if is_fall {
@@ -305,15 +334,9 @@ fn check_for_collisions(
                         }
                     }
                 }
+                Collision::Left | Collision::Right => {}
             }
         }
-    }
-
-    // 左右への移動
-    if player.walk {
-        // 左右移動を反映
-        player_transform.translation.x = next_time_translation.x;
-        player.walk = false;
     }
 }
 
