@@ -32,6 +32,9 @@ struct AnimationTimer(Timer);
 #[derive(Event, Default)]
 struct CollisionEvent;
 
+#[derive(Component)]
+struct Enemy;
+
 fn setup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
@@ -67,6 +70,31 @@ fn setup(
         },
         Character,
         Velocity(Vec2::new(0.0, 0.0)),
+    ));
+
+    // Enemy
+    let texture_handle = asset_server.load("images/slime.png");
+    let texture_atlas = TextureAtlas::from_grid(
+        texture_handle,
+        Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE),
+        2,
+        1,
+        None,
+        None,
+    );
+    let texture_atlas_handle = texture_atlases.add(texture_atlas);
+    let animation_indices = AnimationIndices { first: 0, last: 1 };
+    commands.spawn((
+        SpriteSheetBundle {
+            texture_atlas: texture_atlas_handle,
+            sprite: TextureAtlasSprite::new(animation_indices.first),
+            transform: Transform::from_xyz(TILE_SIZE * 10., TILE_SIZE * 2., 0.),
+            ..default()
+        },
+        animation_indices,
+        AnimationTimer(Timer::from_seconds(0.33, TimerMode::Repeating)),
+        Character,
+        Enemy,
     ));
 
     let mut map = [
@@ -180,7 +208,7 @@ struct Player {
     grounded: bool,
 }
 
-fn move_player(
+fn control_player_system(
     keyboard_input: Res<Input<KeyCode>>,
     mut query: Query<(&mut Player, &mut Transform, &mut Velocity)>,
     time_step: Res<FixedTime>,
@@ -207,7 +235,7 @@ fn move_player(
     }
 }
 
-fn apply_velocity(mut query: Query<(&mut Transform, &Velocity)>, time_step: Res<FixedTime>) {
+fn apply_velocity_system(mut query: Query<(&mut Transform, &Velocity)>, time_step: Res<FixedTime>) {
     for (mut transform, velocity) in &mut query {
         transform.translation.x += velocity.x * time_step.period.as_secs_f32();
         transform.translation.y += velocity.y * time_step.period.as_secs_f32();
@@ -215,7 +243,7 @@ fn apply_velocity(mut query: Query<(&mut Transform, &Velocity)>, time_step: Res<
 }
 
 #[allow(clippy::type_complexity)]
-fn check_for_collisions(
+fn check_collision_wall_system(
     mut commands: Commands,
     mut player_query: Query<(&mut Velocity, &mut Transform, &mut Player), With<Character>>,
     collider_query: Query<
@@ -359,6 +387,37 @@ fn check_for_collisions(
     }
 }
 
+#[allow(clippy::type_complexity)]
+fn check_collision_enemy_system(
+    mut commands: Commands,
+    player_query: Query<(Entity, &Transform), With<Player>>,
+    enemy_query: Query<(Entity, &Transform), With<Enemy>>,
+    // TODO: Weaponにする
+    player_weapon_query: Query<(Entity, &Transform), With<Player>>,
+    // TODO
+    // mut enemy_weapon_query: Query<(&mut Transform, &mut Player), With<Character>>,
+    mut collision_events: EventWriter<CollisionEvent>,
+    time_step: Res<FixedTime>,
+) {
+    let character_size = Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE);
+    for (player_weapon_entity, player_weapon_transform) in &player_weapon_query {
+        for (enemy_entity, enemy_transform) in &enemy_query {
+            let collision = collide(
+                player_weapon_transform.translation,
+                character_size,
+                enemy_transform.translation,
+                character_size,
+            );
+            if let Some(collision) = collision {
+                collision_events.send_default();
+                // TODO
+                // commands.entity(player_weapon_entity).despawn();
+                commands.entity(enemy_entity).despawn();
+            }
+        }
+    }
+}
+
 pub struct GamePlugin;
 
 impl Plugin for GamePlugin {
@@ -370,11 +429,12 @@ impl Plugin for GamePlugin {
             .add_systems(
                 FixedUpdate,
                 (
-                    check_for_collisions
-                        .before(apply_velocity)
-                        .after(move_player),
-                    move_player.before(apply_velocity),
-                    apply_velocity,
+                    check_collision_wall_system
+                        .before(apply_velocity_system)
+                        .after(control_player_system),
+                    control_player_system.before(apply_velocity_system),
+                    apply_velocity_system,
+                    check_collision_enemy_system,
                 ),
             );
     }
