@@ -5,6 +5,8 @@ const CHARACTER_SIZE: f32 = 32.;
 const TILE_SIZE: f32 = 32.;
 const PLAYER_JUMP_FORCE: f32 = 44.0;
 const PLAYER_WALK_STEP: f32 = 4.;
+const PLAYER_WEAPON_STEP: f32 = 8.;
+const PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE: usize = 30;
 const GRAVITY: f32 = 9.81 * 100.0;
 const MAP_WIDTH_TILES: u32 = 100;
 
@@ -34,6 +36,19 @@ struct CollisionEvent;
 
 #[derive(Component)]
 struct Enemy;
+
+enum PlayerWeaponKind {
+    Sword,
+    Fire,
+    Ice,
+    Thunder,
+}
+
+#[derive(Component)]
+struct PlayerWeapon {
+    kind: PlayerWeaponKind,
+    lifetime: usize,
+}
 
 fn setup(
     mut commands: Commands,
@@ -211,7 +226,11 @@ struct Player {
 fn control_player_system(
     keyboard_input: Res<Input<KeyCode>>,
     mut query: Query<(&mut Player, &mut Transform, &mut Velocity)>,
+    weapon_query: Query<&PlayerWeapon>,
     time_step: Res<FixedTime>,
+    asset_server: Res<AssetServer>,
+    mut texture_atlases: ResMut<Assets<TextureAtlas>>,
+    mut commands: Commands,
 ) {
     for (mut player, mut transform, mut velocity) in &mut query {
         // Walk
@@ -231,6 +250,52 @@ fn control_player_system(
         } else if keyboard_input.pressed(KeyCode::Space) {
             player.grounded = false;
             velocity.y = PLAYER_JUMP_FORCE * 10.0; // ?
+        }
+
+        // Weapon
+        if !weapon_query.is_empty() {
+            // すでに武器を出しているなら何もしない
+            return;
+        }
+        if keyboard_input.pressed(KeyCode::A) {
+            let texture_handle = asset_server.load("images/fire.png");
+            let texture_atlas = TextureAtlas::from_grid(
+                texture_handle,
+                Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE),
+                2,
+                1,
+                None,
+                None,
+            );
+            let texture_atlas_handle = texture_atlases.add(texture_atlas);
+            let animation_indices = AnimationIndices { first: 0, last: 1 };
+            let scale = match player.direction {
+                Direction::Right => Vec3::new(1., 1., 0.),
+                Direction::Left => Vec3::new(-1., 1., 0.),
+            };
+            commands.spawn((
+                SpriteSheetBundle {
+                    texture_atlas: texture_atlas_handle,
+                    sprite: TextureAtlasSprite::new(animation_indices.first),
+                    transform: Transform::from_xyz(
+                        match player.direction {
+                            Direction::Right => transform.translation.x + TILE_SIZE / 2.,
+                            Direction::Left => transform.translation.x - TILE_SIZE / 2.,
+                        },
+                        transform.translation.y,
+                        0.,
+                    )
+                    .with_scale(scale),
+                    ..default()
+                },
+                animation_indices,
+                // TODO: 描画フレームは検討の余地あり
+                AnimationTimer(Timer::from_seconds(0.05, TimerMode::Repeating)),
+                PlayerWeapon {
+                    kind: PlayerWeaponKind::Fire,
+                    lifetime: PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE,
+                },
+            ));
         }
     }
 }
@@ -392,15 +457,19 @@ fn check_collision_enemy_system(
     mut commands: Commands,
     player_query: Query<(Entity, &Transform), With<Player>>,
     enemy_query: Query<(Entity, &Transform), With<Enemy>>,
-    // TODO: Weaponにする
-    player_weapon_query: Query<(Entity, &Transform), With<Player>>,
+    mut player_weapon_query: Query<
+        (Entity, &mut Transform, &mut PlayerWeapon),
+        (With<PlayerWeapon>, Without<Player>, Without<Enemy>),
+    >,
     // TODO
     // mut enemy_weapon_query: Query<(&mut Transform, &mut Player), With<Character>>,
     mut collision_events: EventWriter<CollisionEvent>,
     time_step: Res<FixedTime>,
 ) {
     let character_size = Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE);
-    for (player_weapon_entity, player_weapon_transform) in &player_weapon_query {
+    for (player_weapon_entity, mut player_weapon_transform, mut player_weapon) in
+        &mut player_weapon_query
+    {
         for (enemy_entity, enemy_transform) in &enemy_query {
             let collision = collide(
                 player_weapon_transform.translation,
@@ -410,10 +479,23 @@ fn check_collision_enemy_system(
             );
             if let Some(collision) = collision {
                 collision_events.send_default();
-                // TODO
-                // commands.entity(player_weapon_entity).despawn();
+                // TODO: Thunderならdespawnしない
+                commands.entity(player_weapon_entity).despawn();
                 commands.entity(enemy_entity).despawn();
             }
+        }
+
+        // 武器の移動
+        // TODO: Fire以外もつくる
+        if player_weapon_transform.scale.x == -1. {
+            player_weapon_transform.translation.x -= PLAYER_WEAPON_STEP;
+        } else {
+            player_weapon_transform.translation.x += PLAYER_WEAPON_STEP;
+        }
+
+        player_weapon.lifetime -= 1;
+        if player_weapon.lifetime == 0 {
+            commands.entity(player_weapon_entity).despawn();
         }
     }
 }
