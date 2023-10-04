@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use bevy::sprite::collide_aabb::{collide, Collision};
+use rand::Rng;
 
 const CHARACTER_SIZE: f32 = 32.;
 const TILE_SIZE: f32 = 32.;
@@ -9,6 +10,7 @@ const PLAYER_WEAPON_STEP: f32 = 8.;
 const PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE: usize = 30;
 const GRAVITY: f32 = 9.81 * 100.0;
 const MAP_WIDTH_TILES: u32 = 100;
+const ENEMY_SLIME_WALK_STEP: f32 = 1.;
 
 #[derive(Component, Deref, DerefMut)]
 struct Velocity(Vec2);
@@ -34,8 +36,20 @@ struct AnimationTimer(Timer);
 #[derive(Event, Default)]
 struct CollisionEvent;
 
+#[derive(PartialEq)]
+enum EnemyKind {
+    Slime,
+    RedDeamon,
+}
+
 #[derive(Component)]
-struct Enemy;
+struct Enemy {
+    kind: EnemyKind,
+    direction: Direction,
+    move_lifetime: usize,
+    walk_step: f32,
+    stop: bool,
+}
 
 enum PlayerWeaponKind {
     Sword,
@@ -109,7 +123,13 @@ fn setup(
         animation_indices,
         AnimationTimer(Timer::from_seconds(0.33, TimerMode::Repeating)),
         Character,
-        Enemy,
+        Enemy {
+            kind: EnemyKind::Slime,
+            direction: Direction::Left,
+            move_lifetime: 30, // TODO
+            walk_step: ENEMY_SLIME_WALK_STEP,
+            stop: false,
+        },
     ));
 
     let mut map = [
@@ -500,6 +520,78 @@ fn check_collision_enemy_system(
     }
 }
 
+fn move_enemy_system(
+    mut commands: Commands,
+    mut enemy_query: Query<(&mut Transform, &mut Enemy), With<Enemy>>,
+    // collider_query: Query<
+    //     (Entity, &Transform, Option<&Wall>),
+    //     (With<Collider>, Without<Character>),
+    // >,
+    // mut collision_events: EventWriter<CollisionEvent>,
+) {
+    for (mut enemy_transform, mut enemy) in &mut enemy_query {
+        enemy.move_lifetime -= 1;
+        // 現在の行動時間（移動）が終了した時
+        if enemy.move_lifetime == 0 {
+            enemy.move_lifetime = 30; // TODO
+
+            // 飛ぶ敵か止まっていたら新たな動作の抽選を始める
+            // それ以外は行動を継続
+            if enemy.kind == EnemyKind::RedDeamon || enemy.stop {
+                enemy.stop = false;
+                let mut rng = rand::thread_rng();
+                // TODO: 飛ぶ敵は4までにする
+                let random_max = if enemy.kind == EnemyKind::Slime { 2 } else { 4 };
+                let random = rng.gen_range(0..=random_max);
+
+                match random {
+                    // 0ならどちらかに向いて止まる
+                    0 => {
+                        enemy.direction = if rng.gen() {
+                            Direction::Left
+                        } else {
+                            Direction::Right
+                        };
+                        enemy.stop = true;
+                    }
+                    // 右に向く
+                    1 => enemy.direction = Direction::Right,
+                    // 左に向く
+                    2 => enemy.direction = Direction::Left,
+                    // 上を向く(飛ぶ敵のみ)
+                    3 => enemy.direction = Direction::Right, // TODO
+                    // 下を向く(飛ぶ敵のみ)
+                    4 => enemy.direction = Direction::Right, // TODO
+                    // ランダムをmatchに書くために必要
+                    _ => { /* nothing to do */ }
+                };
+                match enemy.direction {
+                    Direction::Left => enemy_transform.scale.x = 1.,
+                    Direction::Right => enemy_transform.scale.x = -1.,
+                }
+            }
+        } else {
+            // TODO: 壁にあたったら移動固定状態を解除するようにする
+            if !enemy.stop {
+                enemy_transform.translation.x = match enemy.direction {
+                    Direction::Left => enemy_transform.translation.x - enemy.walk_step,
+                    Direction::Right => enemy_transform.translation.x + enemy.walk_step,
+                };
+                // 壁判定
+                if enemy_transform.translation.x < 0. {
+                    enemy.stop = false;
+                    enemy.direction = Direction::Right;
+                    match enemy.direction {
+                        Direction::Left => enemy_transform.scale.x = 1.,
+                        Direction::Right => enemy_transform.scale.x = -1.,
+                    }
+                }
+            }
+        }
+    }
+    // TODO: 敵の攻撃
+}
+
 pub struct GamePlugin;
 
 impl Plugin for GamePlugin {
@@ -517,6 +609,7 @@ impl Plugin for GamePlugin {
                     control_player_system.before(apply_velocity_system),
                     apply_velocity_system,
                     check_collision_enemy_system,
+                    move_enemy_system,
                 ),
             );
     }
