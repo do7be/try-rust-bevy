@@ -117,7 +117,11 @@ fn setup(
         SpriteSheetBundle {
             texture_atlas: texture_atlas_handle,
             sprite: TextureAtlasSprite::new(animation_indices.first),
-            transform: Transform::from_xyz(TILE_SIZE * 10., TILE_SIZE * 2., 0.),
+            transform: Transform {
+                translation: Vec3::new(TILE_SIZE * 10., TILE_SIZE * 2., 0.),
+                scale: Vec3::new(-1., 1., 1.),
+                ..default()
+            },
             ..default()
         },
         animation_indices,
@@ -125,7 +129,7 @@ fn setup(
         Character,
         Enemy {
             kind: EnemyKind::Slime,
-            direction: Direction::Left,
+            direction: Direction::Right,
             move_lifetime: 30, // TODO
             walk_step: ENEMY_SLIME_WALK_STEP,
             stop: false,
@@ -497,7 +501,7 @@ fn check_collision_enemy_system(
                 enemy_transform.translation,
                 character_size,
             );
-            if let Some(collision) = collision {
+            if collision.is_some() {
                 collision_events.send_default();
                 // TODO: Thunderならdespawnしない
                 commands.entity(player_weapon_entity).despawn();
@@ -520,14 +524,11 @@ fn check_collision_enemy_system(
     }
 }
 
+#[allow(clippy::type_complexity)]
 fn move_enemy_system(
-    mut commands: Commands,
     mut enemy_query: Query<(&mut Transform, &mut Enemy), With<Enemy>>,
-    // collider_query: Query<
-    //     (Entity, &Transform, Option<&Wall>),
-    //     (With<Collider>, Without<Character>),
-    // >,
-    // mut collision_events: EventWriter<CollisionEvent>,
+    wall_query: Query<&Transform, (With<Wall>, Without<Enemy>)>,
+    mut collision_events: EventWriter<CollisionEvent>,
 ) {
     for (mut enemy_transform, mut enemy) in &mut enemy_query {
         enemy.move_lifetime -= 1;
@@ -570,22 +571,47 @@ fn move_enemy_system(
                     Direction::Right => enemy_transform.scale.x = -1.,
                 }
             }
-        } else {
-            // TODO: 壁にあたったら移動固定状態を解除するようにする
-            if !enemy.stop {
-                enemy_transform.translation.x = match enemy.direction {
-                    Direction::Left => enemy_transform.translation.x - enemy.walk_step,
-                    Direction::Right => enemy_transform.translation.x + enemy.walk_step,
-                };
+        }
+
+        // 敵の移動の判定
+        if !enemy.stop {
+            // 衝突判定を行うために移動先のtranslationを用意
+            // TODO: 上下移動
+            let mut next_time_translation = enemy_transform.translation;
+            next_time_translation.x = match enemy.direction {
+                Direction::Left => enemy_transform.translation.x - enemy.walk_step,
+                Direction::Right => enemy_transform.translation.x + enemy.walk_step,
+            };
+            // 壁判定(画面左端)
+            if next_time_translation.x <= 0. {
+                enemy.stop = true;
+                // enemy.direction = Direction::Right;
+                // 移動中止
+                next_time_translation = enemy_transform.translation;
+            } else {
                 // 壁判定
-                if enemy_transform.translation.x < 0. {
-                    enemy.stop = false;
-                    enemy.direction = Direction::Right;
-                    match enemy.direction {
-                        Direction::Left => enemy_transform.scale.x = 1.,
-                        Direction::Right => enemy_transform.scale.x = -1.,
+                for wall_transform in &wall_query {
+                    let collision = collide(
+                        next_time_translation,
+                        Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE),
+                        wall_transform.translation,
+                        Vec2::new(TILE_SIZE, TILE_SIZE),
+                    );
+                    if collision.is_some() {
+                        collision_events.send_default();
+                        enemy.stop = true;
+                        // 移動中止
+                        next_time_translation = enemy_transform.translation;
+                        break;
                     }
                 }
+            }
+            // 移動を反映
+            enemy_transform.translation = next_time_translation;
+            // 向いている方向に画像を向ける
+            match enemy.direction {
+                Direction::Left => enemy_transform.scale.x = 1.,
+                Direction::Right => enemy_transform.scale.x = -1.,
             }
         }
     }
