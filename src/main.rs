@@ -11,6 +11,7 @@ const PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE: usize = 30;
 const GRAVITY: f32 = 9.81 * 100.0;
 const MAP_WIDTH_TILES: u32 = 100;
 const ENEMY_SLIME_WALK_STEP: f32 = 1.;
+const ENEMY_RIZZARD_WALK_STEP: f32 = 4.;
 
 #[derive(Component, Deref, DerefMut)]
 struct Velocity(Vec2);
@@ -39,6 +40,7 @@ struct CollisionEvent;
 #[derive(PartialEq)]
 enum EnemyKind {
     Slime,
+    Rizzard,
     RedDeamon,
 }
 
@@ -118,7 +120,7 @@ fn setup(
             texture_atlas: texture_atlas_handle,
             sprite: TextureAtlasSprite::new(animation_indices.first),
             transform: Transform {
-                translation: Vec3::new(TILE_SIZE * 10., TILE_SIZE * 2., 0.),
+                translation: Vec3::new(TILE_SIZE * 12., TILE_SIZE * 2., 0.),
                 scale: Vec3::new(-1., 1., 1.),
                 ..default()
             },
@@ -132,6 +134,40 @@ fn setup(
             direction: Direction::Right,
             move_lifetime: 30, // TODO
             walk_step: ENEMY_SLIME_WALK_STEP,
+            stop: false,
+        },
+    ));
+    // TODO: 共通化
+    let texture_handle = asset_server.load("images/mohican_lizard.png");
+    let texture_atlas = TextureAtlas::from_grid(
+        texture_handle,
+        Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE),
+        2,
+        1,
+        None,
+        None,
+    );
+    let texture_atlas_handle = texture_atlases.add(texture_atlas);
+    let animation_indices = AnimationIndices { first: 0, last: 1 };
+    commands.spawn((
+        SpriteSheetBundle {
+            texture_atlas: texture_atlas_handle,
+            sprite: TextureAtlasSprite::new(animation_indices.first),
+            transform: Transform {
+                translation: Vec3::new(TILE_SIZE * 6., TILE_SIZE * 11., 0.),
+                scale: Vec3::new(-1., 1., 1.),
+                ..default()
+            },
+            ..default()
+        },
+        animation_indices,
+        AnimationTimer(Timer::from_seconds(0.33, TimerMode::Repeating)),
+        Character,
+        Enemy {
+            kind: EnemyKind::Rizzard,
+            direction: Direction::Right,
+            move_lifetime: 20, // TODO
+            walk_step: ENEMY_RIZZARD_WALK_STEP,
             stop: false,
         },
     ));
@@ -541,8 +577,12 @@ fn move_enemy_system(
             if enemy.kind == EnemyKind::RedDeamon || enemy.stop {
                 enemy.stop = false;
                 let mut rng = rand::thread_rng();
-                // TODO: 飛ぶ敵は4までにする
-                let random_max = if enemy.kind == EnemyKind::Slime { 2 } else { 4 };
+                // 飛ぶ敵は4方向移動可能
+                let random_max = if enemy.kind == EnemyKind::RedDeamon {
+                    4
+                } else {
+                    2
+                };
                 let random = rng.gen_range(0..=random_max);
 
                 match random {
