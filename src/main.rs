@@ -625,7 +625,6 @@ fn move_enemy_system(
             // 壁判定(画面左端)
             if next_time_translation.x <= 0. {
                 enemy.stop = true;
-                // enemy.direction = Direction::Right;
                 // 移動中止
                 next_time_translation = enemy_transform.translation;
             } else {
@@ -646,6 +645,36 @@ fn move_enemy_system(
                     }
                 }
             }
+
+            // 飛ぶ敵以外は進む先に床がなければ停止させる
+            if enemy.kind != EnemyKind::RedDeamon {
+                let mut exist_floor = false;
+                for wall_transform in &wall_query {
+                    let mut hoge = next_time_translation;
+                    hoge.x = match enemy.direction {
+                        Direction::Left => enemy_transform.translation.x - CHARACTER_SIZE,
+                        Direction::Right => enemy_transform.translation.x + CHARACTER_SIZE,
+                    };
+                    hoge.y -= 1.;
+                    let collision = collide(
+                        hoge,
+                        Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE),
+                        wall_transform.translation,
+                        Vec2::new(TILE_SIZE, TILE_SIZE),
+                    );
+                    if collision.is_some() {
+                        collision_events.send_default();
+                        exist_floor = true;
+                    }
+                }
+                if !exist_floor {
+                    enemy.stop = true;
+                    // 移動中止
+                    next_time_translation = enemy_transform.translation;
+                    break;
+                }
+            }
+
             // 移動を反映
             enemy_transform.translation = next_time_translation;
             // 向いている方向に画像を向ける
