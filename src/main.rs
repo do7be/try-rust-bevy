@@ -309,7 +309,7 @@ fn control_player_system(
             velocity.y -= GRAVITY * time_step.period.as_secs_f32();
         } else if keyboard_input.pressed(KeyCode::Space) {
             player.grounded = false;
-            velocity.y = PLAYER_JUMP_FORCE * 10.0; // ?
+            velocity.y = PLAYER_JUMP_FORCE * 9.8; // ?
         }
 
         // Weapon
