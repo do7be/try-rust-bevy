@@ -246,9 +246,9 @@ fn move_camera(
         transform.translation.x = player_transform
             .translation
             .x
-            .max(303.) // TODO: なぜか320じゃない
+            .max(304.) // 320 - 32 / 2 (タイルの中心が0,0座標なため)
             .min(TILE_SIZE * (MAP_WIDTH_TILES - 11) as f32); // なぜかずれている
-        transform.translation.y = 223.; // TODO: なぜか240じゃない
+        transform.translation.y = 224.; // 240 - 32 / 2
     }
 }
 fn animate_sprite(
