@@ -66,13 +66,11 @@ struct PlayerWeapon {
     lifetime: usize,
 }
 
-fn setup(
+fn game_setup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut texture_atlases: ResMut<Assets<TextureAtlas>>,
 ) {
-    commands.spawn(Camera2dBundle::default());
-
     // Player
     let texture_handle = asset_server.load("images/char.png");
     let texture_atlas = TextureAtlas::from_grid(
@@ -343,7 +341,8 @@ fn control_player_system(
                             Direction::Left => transform.translation.x - TILE_SIZE / 2.,
                         },
                         transform.translation.y,
-                        0.,
+                        // 壁よりも手前に表示
+                        1.,
                     )
                     .with_scale(scale),
                     ..default()
@@ -687,14 +686,24 @@ fn move_enemy_system(
     // TODO: 敵の攻撃
 }
 
+#[derive(Clone, Copy, Default, Eq, PartialEq, Debug, Hash, States)]
+enum GameState {
+    #[default]
+    Title,
+    Game,
+}
+
 pub struct GamePlugin;
 
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(FixedTime::new_from_secs(1.0 / 60.0))
             .add_event::<CollisionEvent>()
-            .add_systems(Startup, setup)
-            .add_systems(Update, (animate_sprite, move_camera))
+            .add_systems(OnEnter(GameState::Game), game_setup)
+            .add_systems(
+                Update,
+                (animate_sprite, move_camera).run_if(in_state(GameState::Game)),
+            )
             .add_systems(
                 FixedUpdate,
                 (
@@ -705,8 +714,49 @@ impl Plugin for GamePlugin {
                     apply_velocity_system,
                     check_collision_enemy_system,
                     move_enemy_system,
-                ),
+                )
+                    .run_if(in_state(GameState::Game)),
             );
+    }
+}
+
+mod title {
+    use bevy::prelude::*;
+
+    use super::{despawn_screen, GameState};
+
+    pub struct TitlePlugin;
+
+    impl Plugin for TitlePlugin {
+        fn build(&self, app: &mut App) {
+            app.add_systems(OnEnter(GameState::Title), title_setup)
+                .add_systems(Update, control_keys.run_if(in_state(GameState::Title)))
+                .add_systems(OnExit(GameState::Title), despawn_screen::<OnTitleScreen>);
+        }
+    }
+
+    // シーン移動時にコンポーネントを消すためのタグとして使う
+    #[derive(Component)]
+    struct OnTitleScreen;
+
+    fn title_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+        commands.spawn((
+            SpriteBundle {
+                texture: asset_server.load("images/scene_1.png"),
+                sprite: Sprite::default(),
+                ..default()
+            },
+            OnTitleScreen,
+        ));
+    }
+
+    fn control_keys(
+        mut game_state: ResMut<NextState<GameState>>,
+        keyboard_input: Res<Input<KeyCode>>,
+    ) {
+        if keyboard_input.pressed(KeyCode::Z) {
+            game_state.set(GameState::Game);
+        }
     }
 }
 
@@ -724,6 +774,19 @@ fn main() {
                     ..default()
                 }),
             GamePlugin,
+            title::TitlePlugin,
         ))
+        .add_state::<GameState>()
+        .add_systems(Startup, setup)
         .run();
+}
+
+fn setup(mut commands: Commands) {
+    commands.spawn(Camera2dBundle::default());
+}
+
+fn despawn_screen<T: Component>(to_despawn: Query<Entity, With<T>>, mut commands: Commands) {
+    for entity in &to_despawn {
+        commands.entity(entity).despawn_recursive();
+    }
 }
