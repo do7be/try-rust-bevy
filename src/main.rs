@@ -1,51 +1,55 @@
 use bevy::prelude::*;
 use bevy::sprite::collide_aabb::{collide, Collision};
 use rand::Rng;
+use try_rust_bevy::consts::*;
 
-const CHARACTER_SIZE: f32 = 32.;
-const TILE_SIZE: f32 = 32.;
-const PLAYER_JUMP_FORCE: f32 = 44.0;
-const PLAYER_WALK_STEP: f32 = 4.;
-const PLAYER_WEAPON_STEP: f32 = 8.;
-const PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE: usize = 30;
-const GRAVITY: f32 = 9.81 * 100.0;
-const MAP_WIDTH_TILES: u32 = 100;
-const ENEMY_SLIME_WALK_STEP: f32 = 1.;
-const ENEMY_RIZZARD_WALK_STEP: f32 = 4.;
+// 各シーン
+mod title;
+
+pub const CHARACTER_SIZE: f32 = 32.;
+pub const TILE_SIZE: f32 = 32.;
+pub const PLAYER_JUMP_FORCE: f32 = 44.0;
+pub const PLAYER_WALK_STEP: f32 = 4.;
+pub const PLAYER_WEAPON_STEP: f32 = 8.;
+pub const PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE: usize = 30;
+pub const GRAVITY: f32 = 9.81 * 100.0;
+pub const MAP_WIDTH_TILES: u32 = 100;
+pub const ENEMY_SLIME_WALK_STEP: f32 = 1.;
+pub const ENEMY_RIZZARD_WALK_STEP: f32 = 4.;
 
 #[derive(Component, Deref, DerefMut)]
-struct Velocity(Vec2);
+pub struct Velocity(Vec2);
 
 #[derive(Component)]
-struct Character;
+pub struct Character;
 
 #[derive(Component)]
-struct Collider;
+pub struct Collider;
 
 #[derive(Component)]
-struct Wall;
+pub struct Wall;
 
 #[derive(Component)]
-struct AnimationIndices {
+pub struct AnimationIndices {
     first: usize,
     last: usize,
 }
 
 #[derive(Component, Deref, DerefMut)]
-struct AnimationTimer(Timer);
+pub struct AnimationTimer(Timer);
 
 #[derive(Event, Default)]
-struct CollisionEvent;
+pub struct CollisionEvent;
 
 #[derive(PartialEq)]
-enum EnemyKind {
+pub enum EnemyKind {
     Slime,
     Rizzard,
     RedDeamon,
 }
 
 #[derive(Component)]
-struct Enemy {
+pub struct Enemy {
     kind: EnemyKind,
     direction: Direction,
     move_lifetime: usize,
@@ -53,7 +57,7 @@ struct Enemy {
     stop: bool,
 }
 
-enum PlayerWeaponKind {
+pub enum PlayerWeaponKind {
     Sword,
     Fire,
     Ice,
@@ -61,9 +65,21 @@ enum PlayerWeaponKind {
 }
 
 #[derive(Component)]
-struct PlayerWeapon {
+pub struct PlayerWeapon {
     kind: PlayerWeaponKind,
     lifetime: usize,
+}
+
+pub enum Direction {
+    Left,
+    Right,
+}
+
+#[derive(Component)]
+pub struct Player {
+    direction: Direction,
+    walk: bool,
+    grounded: bool,
 }
 
 fn game_setup(
@@ -267,18 +283,6 @@ fn animate_sprite(
             };
         }
     }
-}
-
-enum Direction {
-    Left,
-    Right,
-}
-
-#[derive(Component)]
-struct Player {
-    direction: Direction,
-    walk: bool,
-    grounded: bool,
 }
 
 fn control_player_system(
@@ -686,13 +690,6 @@ fn move_enemy_system(
     // TODO: 敵の攻撃
 }
 
-#[derive(Clone, Copy, Default, Eq, PartialEq, Debug, Hash, States)]
-enum GameState {
-    #[default]
-    Title,
-    Game,
-}
-
 pub struct GamePlugin;
 
 impl Plugin for GamePlugin {
@@ -720,44 +717,8 @@ impl Plugin for GamePlugin {
     }
 }
 
-mod title {
-    use bevy::prelude::*;
-
-    use super::{despawn_screen, GameState};
-
-    pub struct TitlePlugin;
-
-    impl Plugin for TitlePlugin {
-        fn build(&self, app: &mut App) {
-            app.add_systems(OnEnter(GameState::Title), title_setup)
-                .add_systems(Update, control_keys.run_if(in_state(GameState::Title)))
-                .add_systems(OnExit(GameState::Title), despawn_screen::<OnTitleScreen>);
-        }
-    }
-
-    // シーン移動時にコンポーネントを消すためのタグとして使う
-    #[derive(Component)]
-    struct OnTitleScreen;
-
-    fn title_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
-        commands.spawn((
-            SpriteBundle {
-                texture: asset_server.load("images/scene_1.png"),
-                sprite: Sprite::default(),
-                ..default()
-            },
-            OnTitleScreen,
-        ));
-    }
-
-    fn control_keys(
-        mut game_state: ResMut<NextState<GameState>>,
-        keyboard_input: Res<Input<KeyCode>>,
-    ) {
-        if keyboard_input.pressed(KeyCode::Z) {
-            game_state.set(GameState::Game);
-        }
-    }
+fn setup(mut commands: Commands) {
+    commands.spawn(Camera2dBundle::default());
 }
 
 fn main() {
@@ -774,19 +735,9 @@ fn main() {
                     ..default()
                 }),
             GamePlugin,
-            title::TitlePlugin,
+            title::title_scene::TitlePlugin,
         ))
         .add_state::<GameState>()
         .add_systems(Startup, setup)
         .run();
-}
-
-fn setup(mut commands: Commands) {
-    commands.spawn(Camera2dBundle::default());
-}
-
-fn despawn_screen<T: Component>(to_despawn: Query<Entity, With<T>>, mut commands: Commands) {
-    for entity in &to_despawn {
-        commands.entity(entity).despawn_recursive();
-    }
 }
