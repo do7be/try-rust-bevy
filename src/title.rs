@@ -36,7 +36,7 @@ pub mod title_scene {
         keyboard_input: Res<Input<KeyCode>>,
     ) {
         if keyboard_input.pressed(KeyCode::Z) {
-            game_state.set(GameState::Game);
+            game_state.set(GameState::Loading);
         }
     }
 }

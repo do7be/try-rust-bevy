@@ -3,6 +3,7 @@ use try_rust_bevy::consts::*;
 
 // 各シーン
 mod game;
+mod loading;
 mod title;
 
 fn setup(mut commands: Commands) {
@@ -24,6 +25,7 @@ fn main() {
                 }),
             game::game_scene::GamePlugin,
             title::title_scene::TitlePlugin,
+            loading::loading_scene::LoadingPlugin,
         ))
         .add_state::<GameState>()
         .add_systems(Startup, setup)
