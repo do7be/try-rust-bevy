@@ -3,6 +3,7 @@ pub mod game_scene {
     use bevy::sprite::collide_aabb::{collide, Collision};
     use rand::Rng;
     use try_rust_bevy::consts::*;
+    use try_rust_bevy::utils::*;
 
     const CHARACTER_SIZE: f32 = 32.;
     const TILE_SIZE: f32 = 32.;
@@ -14,6 +15,9 @@ pub mod game_scene {
     const MAP_WIDTH_TILES: u32 = 100;
     const ENEMY_SLIME_WALK_STEP: f32 = 1.;
     const ENEMY_RIZZARD_WALK_STEP: f32 = 4.;
+
+    #[derive(Component)]
+    struct OnGameScreen;
 
     #[derive(Component, Deref, DerefMut)]
     struct Velocity(Vec2);
@@ -78,6 +82,34 @@ pub mod game_scene {
         direction: Direction,
         walk: bool,
         grounded: bool,
+        live: bool,
+    }
+    pub struct GamePlugin;
+
+    impl Plugin for GamePlugin {
+        fn build(&self, app: &mut App) {
+            app.insert_resource(FixedTime::new_from_secs(1.0 / 60.0))
+                .add_event::<CollisionEvent>()
+                .add_systems(OnEnter(GameState::Game), game_setup)
+                .add_systems(
+                    Update,
+                    (animate_sprite, move_camera, die_counter).run_if(in_state(GameState::Game)),
+                )
+                .add_systems(
+                    FixedUpdate,
+                    (
+                        check_collision_wall_system
+                            .before(apply_velocity_system)
+                            .after(control_player_system),
+                        control_player_system.before(apply_velocity_system),
+                        apply_velocity_system,
+                        check_collision_enemy_system,
+                        move_enemy_system,
+                    )
+                        .run_if(in_state(GameState::Game)),
+                )
+                .add_systems(OnExit(GameState::Game), despawn_screen::<OnGameScreen>);
+        }
     }
 
     fn game_setup(
@@ -85,6 +117,9 @@ pub mod game_scene {
         asset_server: Res<AssetServer>,
         mut texture_atlases: ResMut<Assets<TextureAtlas>>,
     ) {
+        // デスタイマー
+        commands.insert_resource(DeathTimer(Timer::from_seconds(2.0, TimerMode::Once)));
+
         // Player
         let texture_handle = asset_server.load("images/char.png");
         let texture_atlas = TextureAtlas::from_grid(
@@ -98,6 +133,7 @@ pub mod game_scene {
         let texture_atlas_handle = texture_atlases.add(texture_atlas);
         let animation_indices = AnimationIndices { first: 2, last: 3 };
         commands.spawn((
+            OnGameScreen,
             SpriteSheetBundle {
                 texture_atlas: texture_atlas_handle,
                 sprite: TextureAtlasSprite::new(animation_indices.first),
@@ -110,6 +146,7 @@ pub mod game_scene {
                 direction: Direction::Right,
                 walk: false,
                 grounded: true,
+                live: true,
             },
             Character,
             Velocity(Vec2::new(0.0, 0.0)),
@@ -128,6 +165,7 @@ pub mod game_scene {
         let texture_atlas_handle = texture_atlases.add(texture_atlas);
         let animation_indices = AnimationIndices { first: 0, last: 1 };
         commands.spawn((
+            OnGameScreen,
             SpriteSheetBundle {
                 texture_atlas: texture_atlas_handle,
                 sprite: TextureAtlasSprite::new(animation_indices.first),
@@ -162,6 +200,7 @@ pub mod game_scene {
         let texture_atlas_handle = texture_atlases.add(texture_atlas);
         let animation_indices = AnimationIndices { first: 0, last: 1 };
         commands.spawn((
+            OnGameScreen,
             SpriteSheetBundle {
                 texture_atlas: texture_atlas_handle,
                 sprite: TextureAtlasSprite::new(animation_indices.first),
@@ -209,26 +248,30 @@ pub mod game_scene {
             for (column, map_char) in map_chars.iter().enumerate() {
                 if *map_char == 'A' || *map_char == 'B' {
                     // Background
-                    commands.spawn((SpriteBundle {
-                        texture: asset_server.load(if *map_char == 'A' {
-                            "images/map_1.png"
-                        } else {
-                            "images/map_2.png"
-                        }),
-                        transform: Transform {
-                            translation: Vec3::new(
-                                TILE_SIZE * column as f32,
-                                CHARACTER_SIZE * row as f32,
-                                -1.,
-                            ),
+                    commands.spawn((
+                        OnGameScreen,
+                        SpriteBundle {
+                            texture: asset_server.load(if *map_char == 'A' {
+                                "images/map_1.png"
+                            } else {
+                                "images/map_2.png"
+                            }),
+                            transform: Transform {
+                                translation: Vec3::new(
+                                    TILE_SIZE * column as f32,
+                                    CHARACTER_SIZE * row as f32,
+                                    -1.,
+                                ),
+                                ..default()
+                            },
                             ..default()
                         },
-                        ..default()
-                    },));
+                    ));
                 }
                 if *map_char == 'C' {
                     // Wall
                     commands.spawn((
+                        OnGameScreen,
                         SpriteBundle {
                             texture: asset_server.load("images/map_3.png"),
                             transform: Transform {
@@ -292,82 +335,91 @@ pub mod game_scene {
         mut texture_atlases: ResMut<Assets<TextureAtlas>>,
         mut commands: Commands,
     ) {
-        for (mut player, mut transform, mut velocity) in &mut query {
-            // Walk
-            if keyboard_input.pressed(KeyCode::Left) {
-                transform.scale.x = -1.0;
-                player.direction = Direction::Left;
-                player.walk = true;
-            } else if keyboard_input.pressed(KeyCode::Right) {
-                transform.scale.x = 1.0;
-                player.direction = Direction::Right;
-                player.walk = true;
-            }
+        let (mut player, mut transform, mut velocity) = query.single_mut();
 
-            // Jump
-            if !player.grounded {
-                velocity.y -= GRAVITY * time_step.period.as_secs_f32();
-            } else if keyboard_input.pressed(KeyCode::Space) {
-                player.grounded = false;
-                velocity.y = PLAYER_JUMP_FORCE * 9.8; // ?
-            }
+        // デス中は何も受け付けない
+        if !player.live {
+            return;
+        }
 
-            // Weapon
-            if !weapon_query.is_empty() {
-                // すでに武器を出しているなら何もしない
-                return;
-            }
-            if keyboard_input.pressed(KeyCode::A) {
-                let texture_handle = asset_server.load("images/fire.png");
-                let texture_atlas = TextureAtlas::from_grid(
-                    texture_handle,
-                    Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE),
-                    2,
-                    1,
-                    None,
-                    None,
-                );
-                let texture_atlas_handle = texture_atlases.add(texture_atlas);
-                let animation_indices = AnimationIndices { first: 0, last: 1 };
-                let scale = match player.direction {
-                    Direction::Right => Vec3::new(1., 1., 0.),
-                    Direction::Left => Vec3::new(-1., 1., 0.),
-                };
-                commands.spawn((
-                    SpriteSheetBundle {
-                        texture_atlas: texture_atlas_handle,
-                        sprite: TextureAtlasSprite::new(animation_indices.first),
-                        transform: Transform::from_xyz(
-                            match player.direction {
-                                Direction::Right => transform.translation.x + TILE_SIZE / 2.,
-                                Direction::Left => transform.translation.x - TILE_SIZE / 2.,
-                            },
-                            transform.translation.y,
-                            // 壁よりも手前に表示
-                            1.,
-                        )
-                        .with_scale(scale),
-                        ..default()
-                    },
-                    animation_indices,
-                    // TODO: 描画フレームは検討の余地あり
-                    AnimationTimer(Timer::from_seconds(0.05, TimerMode::Repeating)),
-                    PlayerWeapon {
-                        kind: PlayerWeaponKind::Fire,
-                        lifetime: PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE,
-                    },
-                ));
-            }
+        // Walk
+        if keyboard_input.pressed(KeyCode::Left) {
+            transform.scale.x = -1.0;
+            player.direction = Direction::Left;
+            player.walk = true;
+        } else if keyboard_input.pressed(KeyCode::Right) {
+            transform.scale.x = 1.0;
+            player.direction = Direction::Right;
+            player.walk = true;
+        }
+
+        // Jump
+        if !player.grounded {
+            velocity.y -= GRAVITY * time_step.period.as_secs_f32();
+        } else if keyboard_input.pressed(KeyCode::X) {
+            player.grounded = false;
+            velocity.y = PLAYER_JUMP_FORCE * 9.8; // ?
+        }
+
+        // Weapon
+        if !weapon_query.is_empty() {
+            // すでに武器を出しているなら何もしない
+            return;
+        }
+        if keyboard_input.pressed(KeyCode::A) {
+            let texture_handle = asset_server.load("images/fire.png");
+            let texture_atlas = TextureAtlas::from_grid(
+                texture_handle,
+                Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE),
+                2,
+                1,
+                None,
+                None,
+            );
+            let texture_atlas_handle = texture_atlases.add(texture_atlas);
+            let animation_indices = AnimationIndices { first: 0, last: 1 };
+            let scale = match player.direction {
+                Direction::Right => Vec3::new(1., 1., 0.),
+                Direction::Left => Vec3::new(-1., 1., 0.),
+            };
+            commands.spawn((
+                OnGameScreen,
+                SpriteSheetBundle {
+                    texture_atlas: texture_atlas_handle,
+                    sprite: TextureAtlasSprite::new(animation_indices.first),
+                    transform: Transform::from_xyz(
+                        match player.direction {
+                            Direction::Right => transform.translation.x + TILE_SIZE / 2.,
+                            Direction::Left => transform.translation.x - TILE_SIZE / 2.,
+                        },
+                        transform.translation.y,
+                        // 壁よりも手前に表示
+                        1.,
+                    )
+                    .with_scale(scale),
+                    ..default()
+                },
+                animation_indices,
+                // TODO: 描画フレームは検討の余地あり
+                AnimationTimer(Timer::from_seconds(0.05, TimerMode::Repeating)),
+                PlayerWeapon {
+                    kind: PlayerWeaponKind::Fire,
+                    lifetime: PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE,
+                },
+            ));
         }
     }
 
     fn apply_velocity_system(
-        mut query: Query<(&mut Transform, &Velocity)>,
+        mut query: Query<(&mut Transform, &Velocity, &mut Player), With<Player>>,
         time_step: Res<FixedTime>,
+        mut timer: ResMut<DeathTimer>,
     ) {
-        for (mut transform, velocity) in &mut query {
-            transform.translation.x += velocity.x * time_step.period.as_secs_f32();
+        for (mut transform, velocity, mut player) in &mut query {
             transform.translation.y += velocity.y * time_step.period.as_secs_f32();
+            if transform.translation.y < 0. && player.live {
+                die(&mut player, &mut timer);
+            }
         }
     }
 
@@ -695,30 +747,25 @@ pub mod game_scene {
         // TODO: 敵の攻撃
     }
 
-    pub struct GamePlugin;
+    // デス処理
+    fn die(player: &mut Player, timer: &mut ResMut<DeathTimer>) {
+        player.live = false;
+        // デスタイマー起動
+        timer.reset();
+    }
 
-    impl Plugin for GamePlugin {
-        fn build(&self, app: &mut App) {
-            app.insert_resource(FixedTime::new_from_secs(1.0 / 60.0))
-                .add_event::<CollisionEvent>()
-                .add_systems(OnEnter(GameState::Game), game_setup)
-                .add_systems(
-                    Update,
-                    (animate_sprite, move_camera).run_if(in_state(GameState::Game)),
-                )
-                .add_systems(
-                    FixedUpdate,
-                    (
-                        check_collision_wall_system
-                            .before(apply_velocity_system)
-                            .after(control_player_system),
-                        control_player_system.before(apply_velocity_system),
-                        apply_velocity_system,
-                        check_collision_enemy_system,
-                        move_enemy_system,
-                    )
-                        .run_if(in_state(GameState::Game)),
-                );
+    #[derive(Resource, Deref, DerefMut)]
+    struct DeathTimer(Timer);
+
+    fn die_counter(
+        query: Query<&Player, With<Player>>,
+        mut game_state: ResMut<NextState<GameState>>,
+        time: Res<Time>,
+        mut timer: ResMut<DeathTimer>,
+    ) {
+        let player = query.single();
+        if !player.live && timer.tick(time.delta()).finished() {
+            game_state.set(GameState::Loading);
         }
     }
 }
