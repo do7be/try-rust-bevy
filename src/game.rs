@@ -411,14 +411,31 @@ pub mod game_scene {
     }
 
     fn apply_velocity_system(
-        mut query: Query<(&mut Transform, &Velocity, &mut Player), With<Player>>,
+        mut query: Query<
+            (
+                &mut Transform,
+                &Velocity,
+                &mut Player,
+                &mut AnimationIndices,
+                &mut TextureAtlasSprite,
+            ),
+            With<Player>,
+        >,
         time_step: Res<FixedTime>,
         mut timer: ResMut<DeathTimer>,
     ) {
-        for (mut transform, velocity, mut player) in &mut query {
+        for (mut transform, velocity, mut player, mut player_animation, mut player_texture_atlas) in
+            &mut query
+        {
             transform.translation.y += velocity.y * time_step.period.as_secs_f32();
             if transform.translation.y < 0. && player.live {
-                die(&mut player, &mut timer);
+                die(
+                    &mut player,
+                    &mut transform,
+                    &mut player_animation,
+                    &mut player_texture_atlas,
+                    &mut timer,
+                );
             }
         }
     }
@@ -575,7 +592,15 @@ pub mod game_scene {
     #[allow(clippy::type_complexity)]
     fn check_collision_enemy_system(
         mut commands: Commands,
-        player_query: Query<(Entity, &Transform), With<Player>>,
+        mut player_query: Query<
+            (
+                &mut Transform,
+                &mut Player,
+                &mut AnimationIndices,
+                &mut TextureAtlasSprite,
+            ),
+            (With<Player>, Without<Enemy>, Without<PlayerWeapon>),
+        >,
         enemy_query: Query<(Entity, &Transform), With<Enemy>>,
         mut player_weapon_query: Query<
             (Entity, &mut Transform, &mut PlayerWeapon),
@@ -584,9 +609,14 @@ pub mod game_scene {
         // TODO
         // mut enemy_weapon_query: Query<(&mut Transform, &mut Player), With<Character>>,
         mut collision_events: EventWriter<CollisionEvent>,
-        time_step: Res<FixedTime>,
+        mut timer: ResMut<DeathTimer>,
     ) {
         let character_size = Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE);
+        let (mut player_transform, mut player, mut player_animation, mut player_texture_atlas) =
+            player_query.single_mut();
+
+        // TODO: 接触判定の種類ごとにsystemに分割する
+        // 自分の武器と敵の接触判定
         for (player_weapon_entity, mut player_weapon_transform, mut player_weapon) in
             &mut player_weapon_query
         {
@@ -616,6 +646,26 @@ pub mod game_scene {
             player_weapon.lifetime -= 1;
             if player_weapon.lifetime == 0 {
                 commands.entity(player_weapon_entity).despawn();
+            }
+        }
+
+        // 自分と敵の接触判定
+        for (_enemy_entity, enemy_transform) in &enemy_query {
+            let collision = collide(
+                player_transform.translation,
+                character_size,
+                enemy_transform.translation,
+                character_size,
+            );
+            if collision.is_some() && player.live {
+                collision_events.send_default();
+                die(
+                    &mut player,
+                    &mut player_transform,
+                    &mut player_animation,
+                    &mut player_texture_atlas,
+                    &mut timer,
+                );
             }
         }
     }
@@ -730,7 +780,6 @@ pub mod game_scene {
                     if !exist_floor {
                         enemy.stop = true;
                         // 移動中止
-                        next_time_translation = enemy_transform.translation;
                         break;
                     }
                 }
@@ -748,8 +797,19 @@ pub mod game_scene {
     }
 
     // デス処理
-    fn die(player: &mut Player, timer: &mut ResMut<DeathTimer>) {
+    fn die(
+        player: &mut Player,
+        transform: &mut Transform,
+        animation_indices: &mut AnimationIndices,
+        texture_atlas_sprite: &mut TextureAtlasSprite,
+        timer: &mut ResMut<DeathTimer>,
+    ) {
         player.live = false;
+        // デス画像に差し替え
+        animation_indices.first = 4;
+        animation_indices.last = 4;
+        transform.scale.x *= -1.; // デス画像は左右逆になっている
+        texture_atlas_sprite.index = 4;
         // デスタイマー起動
         timer.reset();
     }
