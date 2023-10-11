@@ -354,9 +354,7 @@ pub mod game_scene {
         }
 
         // Jump
-        if !player.grounded {
-            velocity.y -= GRAVITY * time_step.period.as_secs_f32();
-        } else if keyboard_input.pressed(KeyCode::X) {
+        if player.grounded && keyboard_input.pressed(KeyCode::X) {
             player.grounded = false;
             velocity.y = PLAYER_JUMP_FORCE * 9.8; // ?
         }
@@ -414,7 +412,7 @@ pub mod game_scene {
         mut query: Query<
             (
                 &mut Transform,
-                &Velocity,
+                &mut Velocity,
                 &mut Player,
                 &mut AnimationIndices,
                 &mut TextureAtlasSprite,
@@ -424,19 +422,31 @@ pub mod game_scene {
         time_step: Res<FixedTime>,
         mut timer: ResMut<DeathTimer>,
     ) {
-        for (mut transform, velocity, mut player, mut player_animation, mut player_texture_atlas) in
-            &mut query
-        {
-            transform.translation.y += velocity.y * time_step.period.as_secs_f32();
-            if transform.translation.y < 0. && player.live {
-                die(
-                    &mut player,
-                    &mut transform,
-                    &mut player_animation,
-                    &mut player_texture_atlas,
-                    &mut timer,
-                );
-            }
+        let (
+            mut transform,
+            mut velocity,
+            mut player,
+            mut player_animation,
+            mut player_texture_atlas,
+        ) = query.single_mut();
+
+        // ジャンプ中もしくは落下中なら加速度に重力を作用
+        if !player.grounded {
+            velocity.y -= GRAVITY * time_step.period.as_secs_f32();
+        }
+
+        // 加速度に伴いY軸の位置を変更
+        transform.translation.y += velocity.y * time_step.period.as_secs_f32();
+
+        // 落ちたときはデス処理
+        if transform.translation.y < 0. && player.live {
+            die(
+                &mut player,
+                &mut transform,
+                &mut player_animation,
+                &mut player_texture_atlas,
+                &mut timer,
+            );
         }
     }
 
