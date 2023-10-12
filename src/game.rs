@@ -138,7 +138,7 @@ pub mod game_scene {
             SpriteSheetBundle {
                 texture_atlas: texture_atlas_handle,
                 sprite: TextureAtlasSprite::new(animation_indices.first),
-                transform: Transform::from_xyz(TILE_SIZE * 2., TILE_SIZE * 2., 0.),
+                transform: Transform::from_xyz(TILE_SIZE * 2., TILE_SIZE * 2., 1.),
                 ..default()
             },
             animation_indices,
