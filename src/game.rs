@@ -59,6 +59,7 @@ pub mod game_scene {
         stop: bool,
     }
 
+    #[derive(Clone)]
     enum PlayerWeaponKind {
         Sword,
         Fire,
@@ -356,7 +357,7 @@ pub mod game_scene {
         // Jump
         if player.grounded && keyboard_input.pressed(KeyCode::X) {
             player.grounded = false;
-            velocity.y = PLAYER_JUMP_FORCE * 9.8; // ?
+            velocity.y = PLAYER_JUMP_FORCE * 9.87; // ?
         }
 
         // Weapon
@@ -364,8 +365,24 @@ pub mod game_scene {
             // すでに武器を出しているなら何もしない
             return;
         }
-        if keyboard_input.pressed(KeyCode::A) {
-            let texture_handle = asset_server.load("images/fire.png");
+        let weapon_kind = if keyboard_input.pressed(KeyCode::A) {
+            Some(PlayerWeaponKind::Fire)
+        } else if keyboard_input.pressed(KeyCode::S) {
+            Some(PlayerWeaponKind::Ice)
+        } else if keyboard_input.pressed(KeyCode::D) {
+            Some(PlayerWeaponKind::Thunder)
+        } else if keyboard_input.pressed(KeyCode::Z) {
+            Some(PlayerWeaponKind::Sword)
+        } else {
+            None
+        };
+        if let Some(weapon_kind) = weapon_kind {
+            let texture_handle = match weapon_kind {
+                PlayerWeaponKind::Fire => asset_server.load("images/fire.png"),
+                PlayerWeaponKind::Ice => asset_server.load("images/ice.png"),
+                PlayerWeaponKind::Thunder => asset_server.load("images/thunder.png"),
+                PlayerWeaponKind::Sword => asset_server.load("images/sword.png"),
+            };
             let texture_atlas = TextureAtlas::from_grid(
                 texture_handle,
                 Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE),
@@ -387,8 +404,8 @@ pub mod game_scene {
                     sprite: TextureAtlasSprite::new(animation_indices.first),
                     transform: Transform::from_xyz(
                         match player.direction {
-                            Direction::Right => transform.translation.x + TILE_SIZE / 2.,
-                            Direction::Left => transform.translation.x - TILE_SIZE / 2.,
+                            Direction::Right => transform.translation.x + TILE_SIZE,
+                            Direction::Left => transform.translation.x - TILE_SIZE,
                         },
                         transform.translation.y,
                         // 壁よりも手前に表示
@@ -401,8 +418,14 @@ pub mod game_scene {
                 // TODO: 描画フレームは検討の余地あり
                 AnimationTimer(Timer::from_seconds(0.05, TimerMode::Repeating)),
                 PlayerWeapon {
-                    kind: PlayerWeaponKind::Fire,
-                    lifetime: PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE,
+                    kind: weapon_kind.clone(),
+                    lifetime: match weapon_kind {
+                        PlayerWeaponKind::Fire | PlayerWeaponKind::Ice => {
+                            PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE
+                        }
+                        PlayerWeaponKind::Thunder => PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE, // TODO
+                        PlayerWeaponKind::Sword => PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE,   // TODO
+                    },
                 },
             ));
         }
@@ -645,12 +668,33 @@ pub mod game_scene {
                 }
             }
 
+            // TODO:武器の移動はそれ用のsystemに移動する
             // 武器の移動
             // TODO: Fire以外もつくる
-            if player_weapon_transform.scale.x == -1. {
-                player_weapon_transform.translation.x -= PLAYER_WEAPON_STEP;
-            } else {
-                player_weapon_transform.translation.x += PLAYER_WEAPON_STEP;
+            match player_weapon.kind {
+                PlayerWeaponKind::Fire => {
+                    player_weapon_transform.translation.x += PLAYER_WEAPON_STEP
+                        * if player_weapon_transform.scale.x == -1. {
+                            -1.
+                        } else {
+                            1.
+                        };
+                }
+                PlayerWeaponKind::Ice => {
+                    player_weapon_transform.translation.x += PLAYER_WEAPON_STEP
+                        * if player_weapon_transform.scale.x == -1. {
+                            -1.
+                        } else {
+                            1.
+                        };
+                    player_weapon_transform.translation.y += PLAYER_WEAPON_STEP;
+                }
+                PlayerWeaponKind::Thunder => {
+                    // TODO
+                }
+                PlayerWeaponKind::Sword => {
+                    // TODO
+                }
             }
 
             player_weapon.lifetime -= 1;
