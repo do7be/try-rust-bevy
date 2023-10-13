@@ -7,11 +7,12 @@ pub mod game_scene {
 
     const CHARACTER_SIZE: f32 = 32.;
     const TILE_SIZE: f32 = 32.;
-    const PLAYER_JUMP_FORCE: f32 = 44.0;
+    const PLAYER_JUMP_FORCE: f32 = 44.;
     const PLAYER_WALK_STEP: f32 = 4.;
     const PLAYER_WEAPON_STEP: f32 = 8.;
     const PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE: usize = 30;
-    const GRAVITY: f32 = 9.81 * 100.0;
+    const GRAVITY: f32 = 9.81;
+    const GRAVITY_TIME_STEP: f32 = 0.24; // FPS通りだと重力加速が少ないので経過時間を補正
     const MAP_WIDTH_TILES: u32 = 100;
     const ENEMY_SLIME_WALK_STEP: f32 = 1.;
     const ENEMY_RIZZARD_WALK_STEP: f32 = 4.;
@@ -84,6 +85,9 @@ pub mod game_scene {
         walk: bool,
         grounded: bool,
         live: bool,
+        jump: bool,
+        fall_time: f32,
+        jump_start_y: f32,
     }
     pub struct GamePlugin;
 
@@ -148,6 +152,9 @@ pub mod game_scene {
                 walk: false,
                 grounded: true,
                 live: true,
+                jump: false,
+                fall_time: 0.,
+                jump_start_y: 0.,
             },
             Character,
             Velocity(Vec2::new(0.0, 0.0)),
@@ -329,7 +336,7 @@ pub mod game_scene {
 
     fn control_player_system(
         keyboard_input: Res<Input<KeyCode>>,
-        mut query: Query<(&mut Player, &mut Transform, &mut Velocity)>,
+        mut query: Query<(&mut Player, &mut Transform, &mut Velocity), With<Player>>,
         weapon_query: Query<&PlayerWeapon>,
         time_step: Res<FixedTime>,
         asset_server: Res<AssetServer>,
@@ -357,7 +364,10 @@ pub mod game_scene {
         // Jump
         if player.grounded && keyboard_input.pressed(KeyCode::X) {
             player.grounded = false;
-            velocity.y = PLAYER_JUMP_FORCE * 9.87; // ?
+            velocity.y = PLAYER_JUMP_FORCE;
+            player.jump = true;
+            player.jump_start_y = transform.translation.y;
+            player.fall_time = 0.;
         }
 
         // Weapon
@@ -455,11 +465,16 @@ pub mod game_scene {
 
         // ジャンプ中もしくは落下中なら加速度に重力を作用
         if !player.grounded {
-            velocity.y -= GRAVITY * time_step.period.as_secs_f32();
-        }
+            velocity.y -= GRAVITY * GRAVITY_TIME_STEP;
+            player.fall_time += GRAVITY_TIME_STEP;
 
-        // 加速度に伴いY軸の位置を変更
-        transform.translation.y += velocity.y * time_step.period.as_secs_f32();
+            let t = player.fall_time;
+            transform.translation.y = if player.jump {
+                player.jump_start_y + PLAYER_JUMP_FORCE * t - 0.5 * GRAVITY * t * t
+            } else {
+                player.jump_start_y - 0.5 * GRAVITY * t * t
+            };
+        }
 
         // 落ちたときはデス処理
         if transform.translation.y < 0. && player.live {
@@ -521,6 +536,9 @@ pub mod game_scene {
                 // 接してる壁がないなら落ちる
                 if fall_flag {
                     player.grounded = false;
+                    player.jump = false;
+                    player.jump_start_y = player_transform.translation.y;
+                    player.fall_time = 0.;
                 }
             }
         };
@@ -558,7 +576,12 @@ pub mod game_scene {
 
         // 縦移動の判定
         if !player.grounded {
-            next_time_translation.y += player_velocity.y * time_step.period.as_secs_f32();
+            let t = player.fall_time;
+            next_time_translation.y = if player.jump {
+                player.jump_start_y + PLAYER_JUMP_FORCE * t - 0.5 * GRAVITY * t * t
+            } else {
+                player.jump_start_y - 0.5 * GRAVITY * t * t
+            };
         }
 
         let is_fall = player_velocity.y < 0.;
