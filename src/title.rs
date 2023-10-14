@@ -35,7 +35,7 @@ pub mod title_scene {
         mut game_state: ResMut<NextState<GameState>>,
         keyboard_input: Res<Input<KeyCode>>,
     ) {
-        if keyboard_input.pressed(KeyCode::Z) {
+        if keyboard_input.just_pressed(KeyCode::Z) {
             game_state.set(GameState::Loading);
         }
     }
