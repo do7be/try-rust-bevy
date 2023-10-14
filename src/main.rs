@@ -4,6 +4,7 @@ use try_rust_bevy::consts::*;
 // 各シーン
 mod game;
 mod loading;
+mod stage_title;
 mod title;
 
 fn setup(mut commands: Commands) {
@@ -26,8 +27,10 @@ fn main() {
             game::game_scene::GamePlugin,
             title::title_scene::TitlePlugin,
             loading::loading_scene::LoadingPlugin,
+            stage_title::stage_title_scene::StageTitlePlugin,
         ))
         .add_state::<GameState>()
+        .add_state::<StageState>()
         .add_systems(Startup, setup)
         .run();
 }

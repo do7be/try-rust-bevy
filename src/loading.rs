@@ -44,7 +44,7 @@ pub mod loading_scene {
         mut timer: ResMut<LoadingTimer>,
     ) {
         if timer.tick(time.delta()).finished() {
-            game_state.set(GameState::Game);
+            game_state.set(GameState::StageTitle);
         }
     }
 }
