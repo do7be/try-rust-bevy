@@ -127,6 +127,7 @@ pub mod game_scene {
         mut commands: Commands,
         asset_server: Res<AssetServer>,
         mut texture_atlases: ResMut<Assets<TextureAtlas>>,
+        stage_state: Res<State<StageState>>,
     ) {
         // デスタイマー
         commands.insert_resource(DeathTimer(Timer::from_seconds(2.0, TimerMode::Once)));
@@ -237,23 +238,10 @@ pub mod game_scene {
             },
         ));
 
-        let mut map = [
-        "CAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACA",
-        "CAAAAAAABAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABACA",
-        "CAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAACAAAAAAAAABAAAAAAACCCCCCCAAAAAAAAAAAAAAAACA",
-        "CAAAAAAAAAAAAAAAAAACACAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAACAAACCAAAAAAAAAAAAAAAAAAAAACCCAAACCCAAACCCA",
-        "CBAACCCCCAAAAAAAACCCACCCAAAAACAAAAAAAAAAAAAAAAAAAACCAAAAACCAAAAAAAAAACCCAAAAAAABAAAAAAAAAAAAAAAAAACA",
-        "CAAAAAAABAAAAAAAACCCAAAAAAAAACAAAAAAAAAAAAABAAAAAAAAAAAAACAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACA",
-        "CACAAAAAAAAACCCCCCCCAABAAAACCCAAACAAAAAAAAAAAAACCAAAAAACACCCAAAAAAAAAAAAAAAAACCCAAAAAAAAAAABAAAAAACA",
-        "CACCAAAAAAAAAAAACCCCAAAAAAAAACAAABACABAAAAAAAAAACCAAAAACACAAAACCAAAACCCAAAAAAAAAAAAAAAAAAAAAAAAAAACA",
-        "CAACCAAAAAAAAAAACCCCAACCCAAAACAAAAAAACAAAAAAAAAAACCAAAACACAAAAAAAAAAAAAAAABAAAAAAABAAAAAAAAAAAAAAACA",
-        "AAAACCCAAAAAABAACCCCAAAAAAAAACAAAAAAABACAAAAAAAAAAAAACCCACAACAAABAAAAAACCCAAAAAAAAAAAAAAAAAAABAAAACA",
-        "AAAAAACCCAAAAAAACCCCAABAAAACCCAAAACAAAAAAAAAAABAAAAAAAACACAAAAAAAAAAAAAAAAAAACCCAAAAAAAAAAAAAAAAAACA",
-        "AAAAAAAACCCAAAAACCCCAAAACCAAACAAAAAAAAAACAAAAAACCCCCCCCCACCCCCAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAA",
-        "AAAAAAAAAAAAAAAACCCCAAAAAAAAACAAAAAAAAAAAAAAAAACAAAAAAAAAAAAAAAAAAABAACAAAAAABAAAAAAAAAAAAAAAAAAAAAA",
-        "CCCCCCCCCCCCCCCCCCCCCCCAAAAAACCCCCCCCCCCCCAACCCCCCCCCCCCCCCCCCCAACAAAACAABACAAAACABAACCCCCCCCCCCCCCC",
-        "CCCCCCCCCCCCCCCCCCCCAAAAABAAACCCCCCCCCCCCCAACCCCCCCCCCCCCCCCCCCAACAAAACAAAACAAAACAAAACCCCCCCCCCCCCCC",
-    ];
+        let mut map = match stage_state.get() {
+            StageState::Stage1 => STAGE1_MAP,
+            StageState::Stage2 | StageState::Boss => STAGE2_MAP,
+        };
         map.reverse();
 
         // マップ描画
@@ -266,9 +254,15 @@ pub mod game_scene {
                         OnGameScreen,
                         SpriteBundle {
                             texture: asset_server.load(if *map_char == 'A' {
-                                "images/map_1.png"
+                                match stage_state.get() {
+                                    StageState::Stage1 => "images/map_1.png",
+                                    StageState::Stage2 | StageState::Boss => "images/map2_1.png",
+                                }
                             } else {
-                                "images/map_2.png"
+                                match stage_state.get() {
+                                    StageState::Stage1 => "images/map_2.png",
+                                    StageState::Stage2 | StageState::Boss => "images/map2_2.png",
+                                }
                             }),
                             transform: Transform {
                                 translation: Vec3::new(
@@ -287,7 +281,10 @@ pub mod game_scene {
                     commands.spawn((
                         OnGameScreen,
                         SpriteBundle {
-                            texture: asset_server.load("images/map_3.png"),
+                            texture: asset_server.load(match stage_state.get() {
+                                StageState::Stage1 => "images/map_3.png",
+                                StageState::Stage2 | StageState::Boss => "images/map2_3.png",
+                            }),
                             transform: Transform {
                                 translation: Vec3::new(
                                     TILE_SIZE * column as f32,
