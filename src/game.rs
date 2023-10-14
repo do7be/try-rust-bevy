@@ -101,6 +101,12 @@ pub mod game_scene {
                     (animate_sprite, move_camera, die_counter).run_if(in_state(GameState::Game)),
                 )
                 .add_systems(
+                    Update,
+                    (check_stage1_clear_system)
+                        .run_if(in_state(GameState::Game))
+                        .run_if(in_state(StageState::Stage1)),
+                )
+                .add_systems(
                     FixedUpdate,
                     (
                         check_collision_wall_system
@@ -310,7 +316,7 @@ pub mod game_scene {
                 .translation
                 .x
                 .max(304.) // 320 - 32 / 2 (タイルの中心が0,0座標なため)
-                .min(TILE_SIZE * (MAP_WIDTH_TILES - 11) as f32); // なぜかずれている
+                .min(TILE_SIZE * (MAP_WIDTH_TILES - 11) as f32 - 16.);
             transform.translation.y = 224.; // 240 - 32 / 2
         }
     }
@@ -331,6 +337,18 @@ pub mod game_scene {
                     sprite.index + 1
                 };
             }
+        }
+    }
+
+    fn check_stage1_clear_system(
+        mut game_state: ResMut<NextState<GameState>>,
+        mut stage_state: ResMut<NextState<StageState>>,
+        mut query: Query<&Transform, With<Player>>,
+    ) {
+        let transform = query.single_mut();
+        if transform.translation.x > TILE_SIZE * (MAP_WIDTH_TILES - 2) as f32 {
+            stage_state.set(StageState::Stage2);
+            game_state.set(GameState::Loading);
         }
     }
 
