@@ -377,7 +377,7 @@ pub mod game_scene {
         }
 
         // Jump
-        if player.grounded && keyboard_input.pressed(KeyCode::X) {
+        if player.grounded && keyboard_input.just_pressed(KeyCode::X) {
             player.grounded = false;
             velocity.y = PLAYER_JUMP_FORCE;
             player.jump = true;
@@ -390,13 +390,13 @@ pub mod game_scene {
             // すでに武器を出しているなら何もしない
             return;
         }
-        let weapon_kind = if keyboard_input.pressed(KeyCode::A) {
+        let weapon_kind = if keyboard_input.just_pressed(KeyCode::A) {
             Some(PlayerWeaponKind::Fire)
-        } else if keyboard_input.pressed(KeyCode::S) {
+        } else if keyboard_input.just_pressed(KeyCode::S) {
             Some(PlayerWeaponKind::Ice)
-        } else if keyboard_input.pressed(KeyCode::D) {
+        } else if keyboard_input.just_pressed(KeyCode::D) {
             Some(PlayerWeaponKind::Thunder)
-        } else if keyboard_input.pressed(KeyCode::Z) {
+        } else if keyboard_input.just_pressed(KeyCode::Z) {
             Some(PlayerWeaponKind::Sword)
         } else {
             None
