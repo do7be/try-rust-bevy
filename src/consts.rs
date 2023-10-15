@@ -7,6 +7,7 @@ pub enum GameState {
     Loading,
     StageTitle,
     Game,
+    Ending,
 }
 
 #[derive(Clone, Copy, Default, Eq, PartialEq, Debug, Hash, States)]

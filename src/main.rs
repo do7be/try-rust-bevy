@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use try_rust_bevy::consts::*;
 
 // 各シーン
+mod ending;
 mod game;
 mod loading;
 mod stage_title;
@@ -28,6 +29,7 @@ fn main() {
             title::title_scene::TitlePlugin,
             loading::loading_scene::LoadingPlugin,
             stage_title::stage_title_scene::StageTitlePlugin,
+            ending::ending_scene::EndingPlugin,
         ))
         .add_state::<GameState>()
         .add_state::<StageState>()
