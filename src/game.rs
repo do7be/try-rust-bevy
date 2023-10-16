@@ -91,6 +91,10 @@ pub mod game_scene {
         fall_time: f32,
         jump_start_y: f32,
     }
+
+    #[derive(Resource, Deref, DerefMut)]
+    struct ThunderStopTimer(Timer);
+
     pub struct GamePlugin;
 
     impl Plugin for GamePlugin {
@@ -133,6 +137,11 @@ pub mod game_scene {
     ) {
         // デスタイマー
         commands.insert_resource(DeathTimer(Timer::from_seconds(2.0, TimerMode::Once)));
+        // サンダーを最初だけ一瞬止めるためのタイマー
+        commands.insert_resource(ThunderStopTimer(Timer::from_seconds(
+            0.0167 * 5., // 5F
+            TimerMode::Once,
+        )));
 
         // Player
         let texture_handle = asset_server.load("images/char.png");
@@ -355,7 +364,7 @@ pub mod game_scene {
         keyboard_input: Res<Input<KeyCode>>,
         mut query: Query<(&mut Player, &mut Transform, &mut Velocity), With<Player>>,
         weapon_query: Query<&PlayerWeapon>,
-        time_step: Res<FixedTime>,
+        mut thunder_timer: ResMut<ThunderStopTimer>,
         asset_server: Res<AssetServer>,
         mut texture_atlases: ResMut<Assets<TextureAtlas>>,
         mut commands: Commands,
@@ -388,10 +397,6 @@ pub mod game_scene {
         }
 
         // Weapon
-        if !weapon_query.is_empty() {
-            // すでに武器を出しているなら何もしない
-            return;
-        }
         let weapon_kind = if keyboard_input.just_pressed(KeyCode::A) {
             Some(PlayerWeaponKind::Fire)
         } else if keyboard_input.just_pressed(KeyCode::S) {
@@ -404,6 +409,11 @@ pub mod game_scene {
             None
         };
         if let Some(weapon_kind) = weapon_kind {
+            if weapon_query.iter().any(|weapon| weapon.kind == weapon_kind) {
+                // すでに同じ武器を出しているなら何もしない
+                return;
+            }
+
             let texture_handle = match weapon_kind {
                 PlayerWeaponKind::Fire => asset_server.load("images/fire.png"),
                 PlayerWeaponKind::Ice => asset_server.load("images/ice.png"),
@@ -468,6 +478,11 @@ pub mod game_scene {
                     },
                 },
             ));
+
+            // サンダーは最初だけ一瞬止めるのでタイマーをセット
+            if weapon_kind == PlayerWeaponKind::Thunder {
+                thunder_timer.reset();
+            }
         }
     }
 
@@ -676,6 +691,7 @@ pub mod game_scene {
     }
 
     #[allow(clippy::type_complexity)]
+    #[allow(clippy::too_many_arguments)]
     fn check_collision_enemy_system(
         mut commands: Commands,
         mut player_query: Query<
@@ -695,7 +711,9 @@ pub mod game_scene {
         // TODO
         // mut enemy_weapon_query: Query<(&mut Transform, &mut Player), With<Character>>,
         mut collision_events: EventWriter<CollisionEvent>,
+        time: Res<Time>,
         mut timer: ResMut<DeathTimer>,
+        mut thunder_timer: ResMut<ThunderStopTimer>,
     ) {
         let character_size = Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE);
         let (mut player_transform, mut player, mut player_animation, mut player_texture_atlas) =
@@ -745,7 +763,11 @@ pub mod game_scene {
                     player_weapon_transform.translation.y += PLAYER_WEAPON_STEP;
                 }
                 PlayerWeaponKind::Thunder => {
-                    player_weapon_transform.translation.y -= PLAYER_WEAPON_THUNDER_STEP;
+                    // サンダーは最初だけ一瞬止める
+                    thunder_timer.tick(time.delta());
+                    if thunder_timer.finished() {
+                        player_weapon_transform.translation.y -= PLAYER_WEAPON_THUNDER_STEP;
+                    }
                 }
                 PlayerWeaponKind::Sword => {
                     // TODO
