@@ -429,7 +429,14 @@ pub mod game_scene {
                 None,
             );
             let texture_atlas_handle = texture_atlases.add(texture_atlas);
-            let animation_indices = AnimationIndices { first: 0, last: 2 };
+            let animation_indices = AnimationIndices {
+                first: 0,
+                last: if weapon_kind == PlayerWeaponKind::Thunder {
+                    0
+                } else {
+                    2
+                },
+            };
             let scale = match player.direction {
                 Direction::Right => Vec3::new(1., 1., 0.),
                 Direction::Left => Vec3::new(-1., 1., 0.),
@@ -705,7 +712,12 @@ pub mod game_scene {
         >,
         enemy_query: Query<(Entity, &Transform), With<Enemy>>,
         mut player_weapon_query: Query<
-            (Entity, &mut Transform, &mut PlayerWeapon),
+            (
+                Entity,
+                &mut Transform,
+                &mut PlayerWeapon,
+                &mut AnimationIndices,
+            ),
             (With<PlayerWeapon>, Without<Player>, Without<Enemy>),
         >,
         // TODO
@@ -721,8 +733,12 @@ pub mod game_scene {
 
         // TODO: 接触判定の種類ごとにsystemに分割する
         // 自分の武器と敵の接触判定
-        for (player_weapon_entity, mut player_weapon_transform, mut player_weapon) in
-            &mut player_weapon_query
+        for (
+            player_weapon_entity,
+            mut player_weapon_transform,
+            mut player_weapon,
+            mut player_weapon_animation,
+        ) in &mut player_weapon_query
         {
             for (enemy_entity, enemy_transform) in &enemy_query {
                 let collision = collide(
@@ -766,6 +782,11 @@ pub mod game_scene {
                     // サンダーは最初だけ一瞬止める
                     thunder_timer.tick(time.delta());
                     if thunder_timer.finished() {
+                        // アニメーション画像を動くものに差し替える
+                        if player_weapon_animation.first == 0 {
+                            player_weapon_animation.first = 1;
+                            player_weapon_animation.last = 2;
+                        }
                         player_weapon_transform.translation.y -= PLAYER_WEAPON_THUNDER_STEP;
                     }
                 }
