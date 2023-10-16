@@ -10,7 +10,9 @@ pub mod game_scene {
     const PLAYER_JUMP_FORCE: f32 = 44.;
     const PLAYER_WALK_STEP: f32 = 4.;
     const PLAYER_WEAPON_STEP: f32 = 8.;
+    const PLAYER_WEAPON_THUNDER_STEP: f32 = 12.;
     const PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE: usize = 30;
+    const PLAYER_WEAPON_LIFETIME_FOR_THUNDER: usize = 45;
     const GRAVITY: f32 = 9.81;
     const GRAVITY_TIME_STEP: f32 = 0.24; // FPS通りだと重力加速が少ないので経過時間を補正
     const MAP_WIDTH_TILES: u32 = 100;
@@ -60,7 +62,7 @@ pub mod game_scene {
         stop: bool,
     }
 
-    #[derive(Clone)]
+    #[derive(Clone, PartialEq)]
     enum PlayerWeaponKind {
         Sword,
         Fire,
@@ -422,21 +424,34 @@ pub mod game_scene {
                 Direction::Right => Vec3::new(1., 1., 0.),
                 Direction::Left => Vec3::new(-1., 1., 0.),
             };
+            let translation = match weapon_kind {
+                PlayerWeaponKind::Thunder => Vec3::new(
+                    transform.translation.x,
+                    TILE_SIZE * 14.,
+                    // 壁よりも手前に表示
+                    1.,
+                ),
+                _ => Vec3::new(
+                    match player.direction {
+                        Direction::Right => transform.translation.x + TILE_SIZE,
+                        Direction::Left => transform.translation.x - TILE_SIZE,
+                    },
+                    transform.translation.y,
+                    // 壁よりも手前に表示
+                    1.,
+                ),
+            };
+
             commands.spawn((
                 OnGameScreen,
                 SpriteSheetBundle {
                     texture_atlas: texture_atlas_handle,
                     sprite: TextureAtlasSprite::new(animation_indices.first),
-                    transform: Transform::from_xyz(
-                        match player.direction {
-                            Direction::Right => transform.translation.x + TILE_SIZE,
-                            Direction::Left => transform.translation.x - TILE_SIZE,
-                        },
-                        transform.translation.y,
-                        // 壁よりも手前に表示
-                        1.,
-                    )
-                    .with_scale(scale),
+                    transform: Transform {
+                        translation,
+                        scale,
+                        ..default()
+                    },
                     ..default()
                 },
                 animation_indices,
@@ -448,8 +463,8 @@ pub mod game_scene {
                         PlayerWeaponKind::Fire | PlayerWeaponKind::Ice => {
                             PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE
                         }
-                        PlayerWeaponKind::Thunder => PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE, // TODO
-                        PlayerWeaponKind::Sword => PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE,   // TODO
+                        PlayerWeaponKind::Thunder => PLAYER_WEAPON_LIFETIME_FOR_THUNDER,
+                        PlayerWeaponKind::Sword => PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE, // TODO
                     },
                 },
             ));
@@ -700,8 +715,10 @@ pub mod game_scene {
                 );
                 if collision.is_some() {
                     collision_events.send_default();
-                    // TODO: Thunderならdespawnしない
-                    commands.entity(player_weapon_entity).despawn();
+                    // Thunderなら貫通なのでdespawnしない
+                    if player_weapon.kind != PlayerWeaponKind::Thunder {
+                        commands.entity(player_weapon_entity).despawn();
+                    }
                     commands.entity(enemy_entity).despawn();
                 }
             }
@@ -728,7 +745,7 @@ pub mod game_scene {
                     player_weapon_transform.translation.y += PLAYER_WEAPON_STEP;
                 }
                 PlayerWeaponKind::Thunder => {
-                    // TODO
+                    player_weapon_transform.translation.y -= PLAYER_WEAPON_THUNDER_STEP;
                 }
                 PlayerWeaponKind::Sword => {
                     // TODO
