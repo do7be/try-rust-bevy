@@ -423,13 +423,13 @@ pub mod game_scene {
             let texture_atlas = TextureAtlas::from_grid(
                 texture_handle,
                 Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE),
-                2,
+                3,
                 1,
                 None,
                 None,
             );
             let texture_atlas_handle = texture_atlases.add(texture_atlas);
-            let animation_indices = AnimationIndices { first: 0, last: 1 };
+            let animation_indices = AnimationIndices { first: 0, last: 2 };
             let scale = match player.direction {
                 Direction::Right => Vec3::new(1., 1., 0.),
                 Direction::Left => Vec3::new(-1., 1., 0.),
