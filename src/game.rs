@@ -124,6 +124,7 @@ pub mod game_scene {
                         control_player_system.before(apply_velocity_system),
                         apply_velocity_system,
                         check_collision_enemy_system,
+                        check_collision_player_weapon_system,
                         move_enemy_system,
                     )
                         .run_if(in_state(GameState::Game)),
@@ -482,10 +483,10 @@ pub mod game_scene {
                     lifetime: Timer::from_seconds(
                         match weapon_kind {
                             PlayerWeaponKind::Fire | PlayerWeaponKind::Ice => {
-                                PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE // 30F
+                                PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE
                             }
-                            PlayerWeaponKind::Thunder => PLAYER_WEAPON_LIFETIME_FOR_THUNDER, // 45F
-                            PlayerWeaponKind::Sword => PLAYER_WEAPON_LIFETIME_FOR_SWORD,     // 9F
+                            PlayerWeaponKind::Thunder => PLAYER_WEAPON_LIFETIME_FOR_THUNDER,
+                            PlayerWeaponKind::Sword => PLAYER_WEAPON_LIFETIME_FOR_SWORD,
                         },
                         TimerMode::Once,
                     ),
@@ -598,7 +599,7 @@ pub mod game_scene {
             }
         };
 
-        for (collider_entity, transform, maybe_wall) in &collider_query {
+        for (_collider_entity, transform, maybe_wall) in &collider_query {
             let collision = collide(
                 next_time_translation,
                 player_size,
@@ -642,7 +643,7 @@ pub mod game_scene {
         let is_fall = player_velocity.y < 0.;
         let is_jump = player_velocity.y > 0.;
         // TODO: collideだとどうしてもジャンプしながら壁にぶつかったときにTOPやBOTTOMが発生しておかしくなるので独自実装に切り替える
-        for (collider_entity, transform, maybe_wall) in &collider_query {
+        for (_collider_entity, transform, maybe_wall) in &collider_query {
             let collision = collide(
                 next_time_translation,
                 player_size,
@@ -701,9 +702,7 @@ pub mod game_scene {
     }
 
     #[allow(clippy::type_complexity)]
-    #[allow(clippy::too_many_arguments)]
     fn check_collision_enemy_system(
-        mut commands: Commands,
         mut player_query: Query<
             (
                 &mut Transform,
@@ -711,6 +710,43 @@ pub mod game_scene {
                 &mut AnimationIndices,
                 &mut TextureAtlasSprite,
             ),
+            (With<Player>, Without<Enemy>, Without<PlayerWeapon>),
+        >,
+        enemy_query: Query<(Entity, &Transform), With<Enemy>>,
+        mut collision_events: EventWriter<CollisionEvent>,
+        mut timer: ResMut<DeathTimer>,
+    ) {
+        let character_size = Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE);
+        let (mut player_transform, mut player, mut player_animation, mut player_texture_atlas) =
+            player_query.single_mut();
+
+        // 自分と敵の接触判定
+        for (_enemy_entity, enemy_transform) in &enemy_query {
+            let collision = collide(
+                player_transform.translation,
+                character_size,
+                enemy_transform.translation,
+                character_size,
+            );
+            if collision.is_some() && player.live {
+                collision_events.send_default();
+                die(
+                    &mut player,
+                    &mut player_transform,
+                    &mut player_animation,
+                    &mut player_texture_atlas,
+                    &mut timer,
+                );
+            }
+        }
+    }
+
+    // 自分の武器と敵の接触判定
+    #[allow(clippy::type_complexity)]
+    fn check_collision_player_weapon_system(
+        mut commands: Commands,
+        mut player_query: Query<
+            (&Transform, &Player),
             (With<Player>, Without<Enemy>, Without<PlayerWeapon>),
         >,
         enemy_query: Query<(Entity, &Transform), With<Enemy>>,
@@ -723,19 +759,13 @@ pub mod game_scene {
             ),
             (With<PlayerWeapon>, Without<Player>, Without<Enemy>),
         >,
-        // TODO
-        // mut enemy_weapon_query: Query<(&mut Transform, &mut Player), With<Character>>,
         mut collision_events: EventWriter<CollisionEvent>,
         time: Res<Time>,
-        mut timer: ResMut<DeathTimer>,
         mut thunder_timer: ResMut<ThunderStopTimer>,
     ) {
         let character_size = Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE);
-        let (mut player_transform, mut player, mut player_animation, mut player_texture_atlas) =
-            player_query.single_mut();
+        let (player_transform, player) = player_query.single_mut();
 
-        // TODO: 接触判定の種類ごとにsystemに分割する
-        // 自分の武器と敵の接触判定
         for (
             player_weapon_entity,
             mut player_weapon_transform,
@@ -810,26 +840,6 @@ pub mod game_scene {
             player_weapon.lifetime.tick(time.delta());
             if player_weapon.lifetime.finished() {
                 commands.entity(player_weapon_entity).despawn();
-            }
-        }
-
-        // 自分と敵の接触判定
-        for (_enemy_entity, enemy_transform) in &enemy_query {
-            let collision = collide(
-                player_transform.translation,
-                character_size,
-                enemy_transform.translation,
-                character_size,
-            );
-            if collision.is_some() && player.live {
-                collision_events.send_default();
-                die(
-                    &mut player,
-                    &mut player_transform,
-                    &mut player_animation,
-                    &mut player_texture_atlas,
-                    &mut timer,
-                );
             }
         }
     }
