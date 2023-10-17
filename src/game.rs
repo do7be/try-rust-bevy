@@ -5,14 +5,17 @@ pub mod game_scene {
     use try_rust_bevy::consts::*;
     use try_rust_bevy::utils::*;
 
+    const FPS: usize = 60;
+    const TIME_1F: f32 = 1. / FPS as f32;
     const CHARACTER_SIZE: f32 = 32.;
     const TILE_SIZE: f32 = 32.;
     const PLAYER_JUMP_FORCE: f32 = 44.;
     const PLAYER_WALK_STEP: f32 = 4.;
     const PLAYER_WEAPON_STEP: f32 = 8.;
     const PLAYER_WEAPON_THUNDER_STEP: f32 = 12.;
-    const PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE: usize = 30;
-    const PLAYER_WEAPON_LIFETIME_FOR_THUNDER: usize = 45;
+    const PLAYER_WEAPON_LIFETIME_FOR_SWORD: f32 = 17. * TIME_1F;
+    const PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE: f32 = 30. * TIME_1F;
+    const PLAYER_WEAPON_LIFETIME_FOR_THUNDER: f32 = 45. * TIME_1F;
     const GRAVITY: f32 = 9.81;
     const GRAVITY_TIME_STEP: f32 = 0.24; // FPS通りだと重力加速が少ないので経過時間を補正
     const MAP_WIDTH_TILES: u32 = 100;
@@ -73,7 +76,7 @@ pub mod game_scene {
     #[derive(Component)]
     struct PlayerWeapon {
         kind: PlayerWeaponKind,
-        lifetime: usize,
+        lifetime: Timer,
     }
 
     enum Direction {
@@ -99,7 +102,7 @@ pub mod game_scene {
 
     impl Plugin for GamePlugin {
         fn build(&self, app: &mut App) {
-            app.insert_resource(FixedTime::new_from_secs(1.0 / 60.0))
+            app.insert_resource(FixedTime::new_from_secs(TIME_1F)) // 60FPS
                 .add_event::<CollisionEvent>()
                 .add_systems(OnEnter(GameState::Game), game_setup)
                 .add_systems(
@@ -473,16 +476,19 @@ pub mod game_scene {
                 },
                 animation_indices,
                 // TODO: 描画フレームは検討の余地あり
-                AnimationTimer(Timer::from_seconds(0.05, TimerMode::Repeating)),
+                AnimationTimer(Timer::from_seconds(TIME_1F * 6., TimerMode::Repeating)),
                 PlayerWeapon {
                     kind: weapon_kind.clone(),
-                    lifetime: match weapon_kind {
-                        PlayerWeaponKind::Fire | PlayerWeaponKind::Ice => {
-                            PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE
-                        }
-                        PlayerWeaponKind::Thunder => PLAYER_WEAPON_LIFETIME_FOR_THUNDER,
-                        PlayerWeaponKind::Sword => PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE, // TODO
-                    },
+                    lifetime: Timer::from_seconds(
+                        match weapon_kind {
+                            PlayerWeaponKind::Fire | PlayerWeaponKind::Ice => {
+                                PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE // 30F
+                            }
+                            PlayerWeaponKind::Thunder => PLAYER_WEAPON_LIFETIME_FOR_THUNDER, // 45F
+                            PlayerWeaponKind::Sword => PLAYER_WEAPON_LIFETIME_FOR_SWORD,     // 9F
+                        },
+                        TimerMode::Once,
+                    ),
                 },
             ));
 
@@ -504,7 +510,6 @@ pub mod game_scene {
             ),
             With<Player>,
         >,
-        time_step: Res<FixedTime>,
         mut timer: ResMut<DeathTimer>,
     ) {
         let (
@@ -542,14 +547,12 @@ pub mod game_scene {
 
     #[allow(clippy::type_complexity)]
     fn check_collision_wall_system(
-        mut commands: Commands,
         mut player_query: Query<(&mut Velocity, &mut Transform, &mut Player), With<Character>>,
         collider_query: Query<
             (Entity, &Transform, Option<&Wall>),
             (With<Collider>, Without<Character>),
         >,
         mut collision_events: EventWriter<CollisionEvent>,
-        time_step: Res<FixedTime>,
     ) {
         let (mut player_velocity, mut player_transform, mut player) = player_query.single_mut();
         let player_size = Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE);
@@ -749,8 +752,10 @@ pub mod game_scene {
                 );
                 if collision.is_some() {
                     collision_events.send_default();
-                    // Thunderなら貫通なのでdespawnしない
-                    if player_weapon.kind != PlayerWeaponKind::Thunder {
+                    // FireとIceなら敵に当たったらdespawnする
+                    if player_weapon.kind == PlayerWeaponKind::Fire
+                        && player_weapon.kind == PlayerWeaponKind::Ice
+                    {
                         commands.entity(player_weapon_entity).despawn();
                     }
                     commands.entity(enemy_entity).despawn();
@@ -759,7 +764,6 @@ pub mod game_scene {
 
             // TODO:武器の移動はそれ用のsystemに移動する
             // 武器の移動
-            // TODO: Fire以外もつくる
             match player_weapon.kind {
                 PlayerWeaponKind::Fire => {
                     player_weapon_transform.translation.x += PLAYER_WEAPON_STEP
@@ -791,12 +795,20 @@ pub mod game_scene {
                     }
                 }
                 PlayerWeaponKind::Sword => {
-                    // TODO
+                    player_weapon_transform.translation.x = match player.direction {
+                        Direction::Right => player_transform.translation.x + CHARACTER_SIZE,
+                        Direction::Left => player_transform.translation.x - CHARACTER_SIZE,
+                    };
+                    player_weapon_transform.translation.y = player_transform.translation.y;
+                    player_weapon_transform.scale.x = match player.direction {
+                        Direction::Right => 1.,
+                        Direction::Left => -1.,
+                    };
                 }
             }
 
-            player_weapon.lifetime -= 1;
-            if player_weapon.lifetime == 0 {
+            player_weapon.lifetime.tick(time.delta());
+            if player_weapon.lifetime.finished() {
                 commands.entity(player_weapon_entity).despawn();
             }
         }
