@@ -647,10 +647,10 @@ pub mod game_scene {
                 collision_events.send_default();
 
                 println!("{}, {:?}", is_jump, collision);
-                match collision {
-                    // 落ちた先が壁なら下降をやめる
-                    Collision::Top => {
-                        if is_fall {
+                if is_fall {
+                    match collision {
+                        // 落ちた先が壁なら下降をやめる
+                        Collision::Top | Collision::Inside | Collision::Left | Collision::Right => {
                             player.grounded = true;
                             player_velocity.y = 0.;
 
@@ -660,10 +660,16 @@ pub mod game_scene {
                                     + (CHARACTER_SIZE - (next_time_translation.y % CHARACTER_SIZE));
                             }
                         }
+                        _ => {}
                     }
-                    // 壁の下側に頭を当てたら上昇をやめる
-                    Collision::Bottom => {
-                        if is_jump {
+                }
+                if is_jump {
+                    match collision {
+                        // 壁の下側に頭を当てたら上昇をやめる
+                        Collision::Bottom
+                        | Collision::Inside
+                        | Collision::Left
+                        | Collision::Right => {
                             player_velocity.y = 0.;
                             player.jump = false;
                             player.fall_time = 0.;
@@ -675,8 +681,8 @@ pub mod game_scene {
                             }
                             player.jump_start_y = next_time_translation.y
                         }
+                        _ => {}
                     }
-                    _ => {}
                 }
             }
         }
