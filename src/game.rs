@@ -118,11 +118,8 @@ pub mod game_scene {
                 .add_systems(
                     FixedUpdate,
                     (
-                        check_collision_wall_system
-                            .before(apply_velocity_system)
-                            .after(control_player_system),
-                        control_player_system.before(apply_velocity_system),
-                        apply_velocity_system,
+                        control_player_system,
+                        check_collision_wall_system.after(control_player_system),
                         check_collision_enemy_system,
                         check_collision_player_weapon_system,
                         move_enemy_system,
@@ -500,62 +497,56 @@ pub mod game_scene {
         }
     }
 
-    fn apply_velocity_system(
-        mut query: Query<
+    // fn apply_velocity_system(
+    //     mut query: Query<
+    //         (
+    //             &mut Transform,
+    //             &mut Velocity,
+    //             &mut Player,
+    //             &mut AnimationIndices,
+    //             &mut TextureAtlasSprite,
+    //         ),
+    //         With<Player>,
+    //     >,
+    //     mut timer: ResMut<DeathTimer>,
+    // ) {
+    //     let (
+    //         mut transform,
+    //         mut velocity,
+    //         mut player,
+    //         mut player_animation,
+    //         mut player_texture_atlas,
+    //     ) = query.single_mut();
+
+    // }
+
+    // プレイヤーの移動先の壁の判定と移動の実施
+    #[allow(clippy::type_complexity)]
+    fn check_collision_wall_system(
+        mut player_query: Query<
             (
-                &mut Transform,
                 &mut Velocity,
+                &mut Transform,
                 &mut Player,
                 &mut AnimationIndices,
                 &mut TextureAtlasSprite,
             ),
-            With<Player>,
+            With<Character>,
         >,
-        mut timer: ResMut<DeathTimer>,
+        collider_query: Query<
+            (Entity, &Transform),
+            (With<Collider>, With<Wall>, Without<Character>),
+        >,
+        mut collision_events: EventWriter<CollisionEvent>,
+        mut death_timer: ResMut<DeathTimer>,
     ) {
         let (
-            mut transform,
-            mut velocity,
+            mut player_velocity,
+            mut player_transform,
             mut player,
             mut player_animation,
             mut player_texture_atlas,
-        ) = query.single_mut();
-
-        // ジャンプ中もしくは落下中なら加速度に重力を作用
-        if !player.grounded {
-            velocity.y -= GRAVITY * GRAVITY_TIME_STEP;
-            player.fall_time += GRAVITY_TIME_STEP;
-
-            let t = player.fall_time;
-            transform.translation.y = if player.jump {
-                player.jump_start_y + PLAYER_JUMP_FORCE * t - 0.5 * GRAVITY * t * t
-            } else {
-                player.jump_start_y - 0.5 * GRAVITY * t * t
-            };
-        }
-
-        // 落ちたときはデス処理
-        if transform.translation.y < 0. && player.live {
-            die(
-                &mut player,
-                &mut transform,
-                &mut player_animation,
-                &mut player_texture_atlas,
-                &mut timer,
-            );
-        }
-    }
-
-    #[allow(clippy::type_complexity)]
-    fn check_collision_wall_system(
-        mut player_query: Query<(&mut Velocity, &mut Transform, &mut Player), With<Character>>,
-        collider_query: Query<
-            (Entity, &Transform, Option<&Wall>),
-            (With<Collider>, Without<Character>),
-        >,
-        mut collision_events: EventWriter<CollisionEvent>,
-    ) {
-        let (mut player_velocity, mut player_transform, mut player) = player_query.single_mut();
+        ) = player_query.single_mut();
         let player_size = Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE);
         let tile_size = Vec2::new(TILE_SIZE, TILE_SIZE);
         let mut next_time_translation = player_transform.translation;
@@ -575,12 +566,12 @@ pub mod game_scene {
                 grounded_translation.x = next_time_translation.x;
 
                 let mut fall_flag = true;
-                for (_collider_entity, transform, _maybe_wall) in &collider_query {
+                for (_collider_entity, transform) in &collider_query {
                     let collision = collide(
                         grounded_translation,
                         player_size,
                         transform.translation,
-                        transform.scale.truncate(),
+                        tile_size,
                     );
 
                     // 接してる壁があるなら落ちない
@@ -599,7 +590,7 @@ pub mod game_scene {
             }
         };
 
-        for (_collider_entity, transform, maybe_wall) in &collider_query {
+        for (_collider_entity, transform) in &collider_query {
             let collision = collide(
                 next_time_translation,
                 player_size,
@@ -608,10 +599,6 @@ pub mod game_scene {
             );
             if let Some(collision) = collision {
                 collision_events.send_default();
-
-                if maybe_wall.is_some() {
-                    // TODO
-                }
 
                 match collision {
                     // 左右なら止める
@@ -630,20 +617,26 @@ pub mod game_scene {
             player.walk = false;
         }
 
-        // 縦移動の判定
-        if !player.grounded {
-            let t = player.fall_time;
-            next_time_translation.y = if player.jump {
-                player.jump_start_y + PLAYER_JUMP_FORCE * t - 0.5 * GRAVITY * t * t
-            } else {
-                player.jump_start_y - 0.5 * GRAVITY * t * t
-            };
+        // ジャンプ or 落下していなければこの先の判定をする必要はない
+        if player.grounded {
+            return;
         }
 
+        player_velocity.y -= GRAVITY * GRAVITY_TIME_STEP;
+        player.fall_time += GRAVITY_TIME_STEP;
+
+        let t = player.fall_time;
+        next_time_translation.y = if player.jump {
+            player.jump_start_y + PLAYER_JUMP_FORCE * t - 0.5 * GRAVITY * t * t
+        } else {
+            player.jump_start_y - 0.5 * GRAVITY * t * t
+        };
+
+        // 縦方向の判定
         let is_fall = player_velocity.y < 0.;
         let is_jump = player_velocity.y > 0.;
         // TODO: collideだとどうしてもジャンプしながら壁にぶつかったときにTOPやBOTTOMが発生しておかしくなるので独自実装に切り替える
-        for (_collider_entity, transform, maybe_wall) in &collider_query {
+        for (_collider_entity, transform) in &collider_query {
             let collision = collide(
                 next_time_translation,
                 player_size,
@@ -653,27 +646,18 @@ pub mod game_scene {
             if let Some(collision) = collision {
                 collision_events.send_default();
 
-                if maybe_wall.is_some() {
-                    // TODO
-                }
-
+                println!("{}, {:?}", is_jump, collision);
                 match collision {
                     // 落ちた先が壁なら下降をやめる
-                    Collision::Top | Collision::Inside => {
+                    Collision::Top => {
                         if is_fall {
                             player.grounded = true;
                             player_velocity.y = 0.;
 
                             // めり込まないように位置調整
                             if next_time_translation.y % CHARACTER_SIZE != 0.0 {
-                                player_transform.translation.y = if next_time_translation.y > 0. {
-                                    next_time_translation.y
-                                        + (CHARACTER_SIZE
-                                            - (next_time_translation.y % CHARACTER_SIZE))
-                                } else {
-                                    next_time_translation.y
-                                        - (next_time_translation.y % CHARACTER_SIZE)
-                                };
+                                next_time_translation.y = next_time_translation.y
+                                    + (CHARACTER_SIZE - (next_time_translation.y % CHARACTER_SIZE));
                             }
                         }
                     }
@@ -681,23 +665,34 @@ pub mod game_scene {
                     Collision::Bottom => {
                         if is_jump {
                             player_velocity.y = 0.;
+                            player.jump = false;
+                            player.fall_time = 0.;
 
                             // めり込まないように位置調整
                             if next_time_translation.y % CHARACTER_SIZE != 0.0 {
-                                player_transform.translation.y = if next_time_translation.y > 0. {
-                                    next_time_translation.y
-                                        - (next_time_translation.y % CHARACTER_SIZE)
-                                } else {
-                                    next_time_translation.y
-                                        - (CHARACTER_SIZE
-                                            + (next_time_translation.y % CHARACTER_SIZE))
-                                };
+                                next_time_translation.y = next_time_translation.y
+                                    - (next_time_translation.y % CHARACTER_SIZE);
                             }
+                            player.jump_start_y = next_time_translation.y
                         }
                     }
-                    Collision::Left | Collision::Right => {}
+                    _ => {}
                 }
             }
+        }
+
+        // 移動を反映
+        player_transform.translation.y = next_time_translation.y;
+
+        // 落ちたときはデス処理
+        if player_transform.translation.y < 0. && player.live {
+            die(
+                &mut player,
+                &mut player_transform,
+                &mut player_animation,
+                &mut player_texture_atlas,
+                &mut death_timer,
+            );
         }
     }
 
