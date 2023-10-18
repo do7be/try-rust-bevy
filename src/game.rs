@@ -19,7 +19,7 @@ pub mod game_scene {
     const GRAVITY: f32 = 9.81;
     const GRAVITY_TIME_STEP: f32 = 0.24; // FPS通りだと重力加速が少ないので経過時間を補正
     const MAP_WIDTH_TILES: u32 = 100;
-    const ENEMY_SLIME_WALK_STEP: f32 = 1.;
+    const ENEMY_WALK_STEP: f32 = 1.;
     const ENEMY_RIZZARD_WALK_STEP: f32 = 4.;
 
     #[derive(Component)]
@@ -52,7 +52,8 @@ pub mod game_scene {
     #[derive(PartialEq)]
     enum EnemyKind {
         Slime,
-        Rizzard,
+        Lizard,
+        Wizard,
         RedDeamon,
     }
 
@@ -210,7 +211,7 @@ pub mod game_scene {
                 kind: EnemyKind::Slime,
                 direction: Direction::Right,
                 move_lifetime: 30, // TODO
-                walk_step: ENEMY_SLIME_WALK_STEP,
+                walk_step: ENEMY_WALK_STEP,
                 stop: false,
             },
         ));
@@ -242,10 +243,46 @@ pub mod game_scene {
             AnimationTimer(Timer::from_seconds(0.33, TimerMode::Repeating)),
             Character,
             Enemy {
-                kind: EnemyKind::Rizzard,
+                kind: EnemyKind::Lizard,
                 direction: Direction::Right,
                 move_lifetime: 20, // TODO
                 walk_step: ENEMY_RIZZARD_WALK_STEP,
+                stop: false,
+            },
+        ));
+
+        // TODO: 共通化
+        let texture_handle = asset_server.load("images/wizard.png");
+        let texture_atlas = TextureAtlas::from_grid(
+            texture_handle,
+            Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE),
+            2,
+            1,
+            None,
+            None,
+        );
+        let texture_atlas_handle = texture_atlases.add(texture_atlas);
+        let animation_indices = AnimationIndices { first: 0, last: 1 };
+        commands.spawn((
+            OnGameScreen,
+            SpriteSheetBundle {
+                texture_atlas: texture_atlas_handle,
+                sprite: TextureAtlasSprite::new(animation_indices.first),
+                transform: Transform {
+                    translation: Vec3::new(TILE_SIZE * 22., TILE_SIZE * 11., 0.),
+                    scale: Vec3::new(-1., 1., 1.),
+                    ..default()
+                },
+                ..default()
+            },
+            animation_indices,
+            AnimationTimer(Timer::from_seconds(0.33, TimerMode::Repeating)),
+            Character,
+            Enemy {
+                kind: EnemyKind::Wizard,
+                direction: Direction::Right,
+                move_lifetime: 20, // TODO
+                walk_step: ENEMY_WALK_STEP,
                 stop: false,
             },
         ));
@@ -646,7 +683,6 @@ pub mod game_scene {
             if let Some(collision) = collision {
                 collision_events.send_default();
 
-                println!("{}, {:?}", is_jump, collision);
                 if is_fall {
                     match collision {
                         // 落ちた先が壁なら下降をやめる
@@ -785,7 +821,7 @@ pub mod game_scene {
                     collision_events.send_default();
                     // FireとIceなら敵に当たったらdespawnする
                     if player_weapon.kind == PlayerWeaponKind::Fire
-                        && player_weapon.kind == PlayerWeaponKind::Ice
+                        || player_weapon.kind == PlayerWeaponKind::Ice
                     {
                         commands.entity(player_weapon_entity).despawn();
                     }
