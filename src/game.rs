@@ -80,6 +80,18 @@ pub mod game_scene {
         lifetime: Timer,
     }
 
+    #[derive(Clone, PartialEq)]
+    enum EnemyWeaponKind {
+        Wind,
+        ShockWave,
+    }
+
+    #[derive(Component)]
+    struct EnemyWeapon {
+        kind: EnemyWeaponKind,
+        lifetime: Timer,
+    }
+
     enum Direction {
         Left,
         Right,
@@ -130,6 +142,7 @@ pub mod game_scene {
                         check_collision_wall_system.after(control_player_system),
                         check_collision_enemy_system,
                         check_collision_player_weapon_system,
+                        check_collision_enemy_weapon_system,
                         move_enemy_system,
                     )
                         .run_if(in_state(GameState::Game)),
@@ -577,29 +590,6 @@ pub mod game_scene {
         }
     }
 
-    // fn apply_velocity_system(
-    //     mut query: Query<
-    //         (
-    //             &mut Transform,
-    //             &mut Velocity,
-    //             &mut Player,
-    //             &mut AnimationIndices,
-    //             &mut TextureAtlasSprite,
-    //         ),
-    //         With<Player>,
-    //     >,
-    //     mut timer: ResMut<DeathTimer>,
-    // ) {
-    //     let (
-    //         mut transform,
-    //         mut velocity,
-    //         mut player,
-    //         mut player_animation,
-    //         mut player_texture_atlas,
-    //     ) = query.single_mut();
-
-    // }
-
     // プレイヤーの移動先の壁の判定と移動の実施
     #[allow(clippy::type_complexity)]
     fn check_collision_wall_system(
@@ -924,11 +914,91 @@ pub mod game_scene {
         }
     }
 
+    // 敵の武器と自分の接触判定
+    #[allow(clippy::type_complexity)]
+    fn check_collision_enemy_weapon_system(
+        mut commands: Commands,
+        mut player_query: Query<(&Transform, &Player), (With<Player>, Without<Enemy>)>,
+        enemy_query: Query<(Entity, &Transform), (With<Enemy>, Without<EnemyWeapon>)>,
+        mut enemy_weapon_query: Query<
+            (
+                Entity,
+                &mut Transform,
+                &mut EnemyWeapon,
+                &mut AnimationIndices,
+            ),
+            (With<EnemyWeapon>, Without<Enemy>, Without<Player>),
+        >,
+        mut collision_events: EventWriter<CollisionEvent>,
+        time: Res<Time>,
+        mut thunder_timer: ResMut<ThunderStopTimer>,
+    ) {
+        let character_size = Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE);
+        let (player_transform, player) = player_query.single_mut();
+
+        for (
+            enemy_weapon_entity,
+            mut enemy_weapon_transform,
+            mut enemy_weapon,
+            mut enemy_weapon_animation,
+        ) in &mut enemy_weapon_query
+        {
+            // for (enemy_entity, enemy_transform) in &enemy_query {
+            //     let collision = collide(
+            //         player_weapon_transform.translation,
+            //         character_size,
+            //         enemy_transform.translation,
+            //         character_size,
+            //     );
+            //     if collision.is_some() {
+            //         collision_events.send_default();
+            //         // FireとIceなら敵に当たったらdespawnする
+            //         if player_weapon.kind == PlayerWeaponKind::Fire
+            //             || player_weapon.kind == PlayerWeaponKind::Ice
+            //         {
+            //             commands.entity(player_weapon_entity).despawn();
+            //         }
+            //         commands.entity(enemy_entity).despawn();
+            //     }
+            // }
+
+            // TODO:武器の移動はそれ用のsystemに移動する
+            // 武器の移動
+            match enemy_weapon.kind {
+                EnemyWeaponKind::Wind => {
+                    enemy_weapon_transform.translation.x += PLAYER_WEAPON_STEP
+                        * if enemy_weapon_transform.scale.x == -1. {
+                            -1.
+                        } else {
+                            1.
+                        };
+                }
+                // TODO
+                EnemyWeaponKind::ShockWave => {
+                    enemy_weapon_transform.translation.x += PLAYER_WEAPON_STEP
+                        * if enemy_weapon_transform.scale.x == -1. {
+                            -1.
+                        } else {
+                            1.
+                        };
+                }
+            }
+
+            enemy_weapon.lifetime.tick(time.delta());
+            if enemy_weapon.lifetime.finished() {
+                commands.entity(enemy_weapon_entity).despawn();
+            }
+        }
+    }
+
     #[allow(clippy::type_complexity)]
     fn move_enemy_system(
         mut enemy_query: Query<(&mut Transform, &mut Enemy), With<Enemy>>,
         wall_query: Query<&Transform, (With<Wall>, Without<Enemy>)>,
         mut collision_events: EventWriter<CollisionEvent>,
+        mut commands: Commands,
+        asset_server: Res<AssetServer>,
+        mut texture_atlases: ResMut<Assets<TextureAtlas>>,
     ) {
         for (mut enemy_transform, mut enemy) in &mut enemy_query {
             enemy.move_lifetime -= 1;
@@ -975,6 +1045,72 @@ pub mod game_scene {
                         AllDirection::Right => enemy_transform.scale.x = -1.,
                         _ => {}
                     }
+                }
+
+                // TODO: プレイヤーのいる方向にしか撃たないようにする
+                if enemy.stop
+                    && (enemy.kind == EnemyKind::RedDemon || enemy.kind == EnemyKind::Wizard)
+                {
+                    let texture_handle = match enemy.kind {
+                        EnemyKind::RedDemon => {
+                            asset_server.load("images/enemy_attack_shockwave.png")
+                        }
+                        EnemyKind::Wizard => asset_server.load("images/enemy_attack_wind.png"),
+                        _ => asset_server.load("images/enemy_attack_wind.png"),
+                    };
+                    let texture_atlas = TextureAtlas::from_grid(
+                        texture_handle,
+                        Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE),
+                        3,
+                        1,
+                        None,
+                        None,
+                    );
+                    let texture_atlas_handle = texture_atlases.add(texture_atlas);
+                    let animation_indices = AnimationIndices { first: 0, last: 2 };
+                    let scale = if enemy_transform.scale.x < 0. {
+                        Vec3::new(1., 1., 0.)
+                    } else {
+                        Vec3::new(-1., 1., 0.)
+                    };
+                    let translation = Vec3::new(
+                        if enemy_transform.scale.x < 0. {
+                            enemy_transform.translation.x + TILE_SIZE
+                        } else {
+                            enemy_transform.translation.x - TILE_SIZE
+                        },
+                        enemy_transform.translation.y,
+                        // 壁よりも手前に表示
+                        1.,
+                    );
+
+                    commands.spawn((
+                        OnGameScreen,
+                        SpriteSheetBundle {
+                            texture_atlas: texture_atlas_handle,
+                            sprite: TextureAtlasSprite::new(animation_indices.first),
+                            transform: Transform {
+                                translation,
+                                scale,
+                                ..default()
+                            },
+                            ..default()
+                        },
+                        animation_indices,
+                        // TODO: 描画フレームは検討の余地あり
+                        AnimationTimer(Timer::from_seconds(TIME_1F * 6., TimerMode::Repeating)),
+                        EnemyWeapon {
+                            kind: match enemy.kind {
+                                EnemyKind::Wizard => EnemyWeaponKind::Wind,
+                                EnemyKind::RedDemon => EnemyWeaponKind::ShockWave,
+                                _ => EnemyWeaponKind::Wind,
+                            },
+                            lifetime: Timer::from_seconds(
+                                PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE,
+                                TimerMode::Once,
+                            ),
+                        },
+                    ));
                 }
             }
 
