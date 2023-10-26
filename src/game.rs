@@ -144,6 +144,8 @@ pub mod game_scene {
                         check_collision_player_weapon_system,
                         check_collision_enemy_weapon_system,
                         move_enemy_system,
+                        move_enemy_weapon_system,
+                        move_player_weapon_system,
                     )
                         .run_if(in_state(GameState::Game)),
                 )
@@ -815,33 +817,17 @@ pub mod game_scene {
     #[allow(clippy::type_complexity)]
     fn check_collision_player_weapon_system(
         mut commands: Commands,
-        mut player_query: Query<
-            (&Transform, &Player),
-            (With<Player>, Without<Enemy>, Without<PlayerWeapon>),
-        >,
         enemy_query: Query<(Entity, &Transform), With<Enemy>>,
         mut player_weapon_query: Query<
-            (
-                Entity,
-                &mut Transform,
-                &mut PlayerWeapon,
-                &mut AnimationIndices,
-            ),
+            (Entity, &mut Transform, &mut PlayerWeapon),
             (With<PlayerWeapon>, Without<Player>, Without<Enemy>),
         >,
         mut collision_events: EventWriter<CollisionEvent>,
-        time: Res<Time>,
-        mut thunder_timer: ResMut<ThunderStopTimer>,
     ) {
         let character_size = Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE);
-        let (player_transform, player) = player_query.single_mut();
 
-        for (
-            player_weapon_entity,
-            mut player_weapon_transform,
-            mut player_weapon,
-            mut player_weapon_animation,
-        ) in &mut player_weapon_query
+        for (player_weapon_entity, player_weapon_transform, player_weapon) in
+            &mut player_weapon_query
         {
             for (enemy_entity, enemy_transform) in &enemy_query {
                 let collision = collide(
@@ -861,9 +847,38 @@ pub mod game_scene {
                     commands.entity(enemy_entity).despawn();
                 }
             }
+        }
+    }
 
-            // TODO:武器の移動はそれ用のsystemに移動する
-            // 武器の移動
+    // 武器の移動
+    #[allow(clippy::type_complexity)]
+    fn move_player_weapon_system(
+        mut commands: Commands,
+        mut player_query: Query<
+            (&Transform, &Player),
+            (With<Player>, Without<Enemy>, Without<PlayerWeapon>),
+        >,
+        mut player_weapon_query: Query<
+            (
+                Entity,
+                &mut Transform,
+                &mut PlayerWeapon,
+                &mut AnimationIndices,
+            ),
+            (With<PlayerWeapon>, Without<Player>, Without<Enemy>),
+        >,
+        time: Res<Time>,
+        mut thunder_timer: ResMut<ThunderStopTimer>,
+    ) {
+        let (player_transform, player) = player_query.single_mut();
+
+        for (
+            player_weapon_entity,
+            mut player_weapon_transform,
+            mut player_weapon,
+            mut player_weapon_animation,
+        ) in &mut player_weapon_query
+        {
             match player_weapon.kind {
                 PlayerWeaponKind::Fire => {
                     player_weapon_transform.translation.x += PLAYER_WEAPON_STEP
@@ -918,52 +933,61 @@ pub mod game_scene {
     #[allow(clippy::type_complexity)]
     fn check_collision_enemy_weapon_system(
         mut commands: Commands,
-        mut player_query: Query<(&Transform, &Player), (With<Player>, Without<Enemy>)>,
-        enemy_query: Query<(Entity, &Transform), (With<Enemy>, Without<EnemyWeapon>)>,
-        mut enemy_weapon_query: Query<
+        mut player_query: Query<
             (
-                Entity,
                 &mut Transform,
-                &mut EnemyWeapon,
+                &mut Player,
                 &mut AnimationIndices,
+                &mut TextureAtlasSprite,
             ),
+            (With<Player>, Without<Enemy>),
+        >,
+        mut enemy_weapon_query: Query<
+            (Entity, &mut Transform),
             (With<EnemyWeapon>, Without<Enemy>, Without<Player>),
         >,
         mut collision_events: EventWriter<CollisionEvent>,
-        time: Res<Time>,
-        mut thunder_timer: ResMut<ThunderStopTimer>,
+        mut death_timer: ResMut<DeathTimer>,
     ) {
         let character_size = Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE);
-        let (player_transform, player) = player_query.single_mut();
+        let (mut player_transform, mut player, mut player_animation, mut player_texture_atlas) =
+            player_query.single_mut();
 
-        for (
-            enemy_weapon_entity,
-            mut enemy_weapon_transform,
-            mut enemy_weapon,
-            mut enemy_weapon_animation,
-        ) in &mut enemy_weapon_query
+        for (enemy_weapon_entity, enemy_weapon_transform) in &mut enemy_weapon_query {
+            // プレイヤーに当たったら死亡処理
+            let collision = collide(
+                enemy_weapon_transform.translation,
+                character_size,
+                player_transform.translation,
+                character_size,
+            );
+            if collision.is_some() {
+                collision_events.send_default();
+                commands.entity(enemy_weapon_entity).despawn();
+                die(
+                    &mut player,
+                    &mut player_transform,
+                    &mut player_animation,
+                    &mut player_texture_atlas,
+                    &mut death_timer,
+                );
+            }
+        }
+    }
+
+    // 敵の武器の移動
+    #[allow(clippy::type_complexity)]
+    fn move_enemy_weapon_system(
+        mut commands: Commands,
+        mut enemy_weapon_query: Query<
+            (Entity, &mut Transform, &mut EnemyWeapon),
+            (With<EnemyWeapon>, Without<Enemy>, Without<Player>),
+        >,
+        time: Res<Time>,
+    ) {
+        for (enemy_weapon_entity, mut enemy_weapon_transform, mut enemy_weapon) in
+            &mut enemy_weapon_query
         {
-            // for (enemy_entity, enemy_transform) in &enemy_query {
-            //     let collision = collide(
-            //         player_weapon_transform.translation,
-            //         character_size,
-            //         enemy_transform.translation,
-            //         character_size,
-            //     );
-            //     if collision.is_some() {
-            //         collision_events.send_default();
-            //         // FireとIceなら敵に当たったらdespawnする
-            //         if player_weapon.kind == PlayerWeaponKind::Fire
-            //             || player_weapon.kind == PlayerWeaponKind::Ice
-            //         {
-            //             commands.entity(player_weapon_entity).despawn();
-            //         }
-            //         commands.entity(enemy_entity).despawn();
-            //     }
-            // }
-
-            // TODO:武器の移動はそれ用のsystemに移動する
-            // 武器の移動
             match enemy_weapon.kind {
                 EnemyWeaponKind::Wind => {
                     enemy_weapon_transform.translation.x += PLAYER_WEAPON_STEP
@@ -1195,7 +1219,6 @@ pub mod game_scene {
                 }
             }
         }
-        // TODO: 敵の攻撃
     }
 
     // デス処理
