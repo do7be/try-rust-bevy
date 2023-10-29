@@ -16,6 +16,7 @@ pub mod game_scene {
     const PLAYER_WEAPON_LIFETIME_FOR_SWORD: f32 = 17. * TIME_1F;
     const PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE: f32 = 30. * TIME_1F;
     const PLAYER_WEAPON_LIFETIME_FOR_THUNDER: f32 = 45. * TIME_1F;
+    const ENEMY_WEAPON_LIFETIME: f32 = 60. * TIME_1F;
     const GRAVITY: f32 = 9.81;
     const GRAVITY_TIME_STEP: f32 = 0.24; // FPS通りだと重力加速が少ないので経過時間を補正
     const MAP_WIDTH_TILES: u32 = 100;
@@ -1129,10 +1130,7 @@ pub mod game_scene {
                                 EnemyKind::RedDemon => EnemyWeaponKind::ShockWave,
                                 _ => EnemyWeaponKind::Wind,
                             },
-                            lifetime: Timer::from_seconds(
-                                PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE,
-                                TimerMode::Once,
-                            ),
+                            lifetime: Timer::from_seconds(ENEMY_WEAPON_LIFETIME, TimerMode::Once),
                         },
                     ));
                 }
