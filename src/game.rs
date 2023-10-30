@@ -91,6 +91,7 @@ pub mod game_scene {
     struct EnemyWeapon {
         kind: EnemyWeaponKind,
         lifetime: Timer,
+        step: Vec2,
     }
 
     enum Direction {
@@ -989,25 +990,8 @@ pub mod game_scene {
         for (enemy_weapon_entity, mut enemy_weapon_transform, mut enemy_weapon) in
             &mut enemy_weapon_query
         {
-            match enemy_weapon.kind {
-                EnemyWeaponKind::Wind => {
-                    enemy_weapon_transform.translation.x += PLAYER_WEAPON_STEP
-                        * if enemy_weapon_transform.scale.x == -1. {
-                            -1.
-                        } else {
-                            1.
-                        };
-                }
-                // TODO
-                EnemyWeaponKind::ShockWave => {
-                    enemy_weapon_transform.translation.x += PLAYER_WEAPON_STEP
-                        * if enemy_weapon_transform.scale.x == -1. {
-                            -1.
-                        } else {
-                            1.
-                        };
-                }
-            }
+            enemy_weapon_transform.translation.x += enemy_weapon.step.x;
+            enemy_weapon_transform.translation.y += enemy_weapon.step.y;
 
             enemy_weapon.lifetime.tick(time.delta());
             if enemy_weapon.lifetime.finished() {
@@ -1018,7 +1002,8 @@ pub mod game_scene {
 
     #[allow(clippy::type_complexity)]
     fn move_enemy_system(
-        mut enemy_query: Query<(&mut Transform, &mut Enemy), With<Enemy>>,
+        player_query: Query<&Transform, (With<Player>, Without<Enemy>)>,
+        mut enemy_query: Query<(&mut Transform, &mut Enemy), (With<Enemy>, Without<Player>)>,
         wall_query: Query<&Transform, (With<Wall>, Without<Enemy>)>,
         mut collision_events: EventWriter<CollisionEvent>,
         mut commands: Commands,
@@ -1108,6 +1093,7 @@ pub mod game_scene {
                         // 壁よりも手前に表示
                         1.,
                     );
+                    let player_transform = player_query.single();
 
                     commands.spawn((
                         OnGameScreen,
@@ -1131,6 +1117,29 @@ pub mod game_scene {
                                 _ => EnemyWeaponKind::Wind,
                             },
                             lifetime: Timer::from_seconds(ENEMY_WEAPON_LIFETIME, TimerMode::Once),
+                            step: match enemy.kind {
+                                EnemyKind::Wizard => Vec2::new(
+                                    // 横移動のみ
+                                    PLAYER_WEAPON_STEP
+                                        * if enemy_transform.scale.x > 0. {
+                                            -1.
+                                        } else {
+                                            1.
+                                        },
+                                    0.,
+                                ),
+                                EnemyKind::RedDemon => {
+                                    // レッドデーモンの攻撃はプレイヤーの位置に目掛けて放つ
+                                    // 角度を求める
+                                    let temp = ((player_transform.translation.y - translation.y)
+                                        / (player_transform.translation.x - translation.x))
+                                        .atan();
+                                    let x = (player_transform.translation.x - translation.x) / 50.; //xは50回移動でキャラに到達
+                                    let y = temp.tan() * x;
+                                    Vec2::new(x, y)
+                                }
+                                _ => Vec2::default(),
+                            },
                         },
                     ));
                 }
