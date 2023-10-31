@@ -822,16 +822,27 @@ pub mod game_scene {
         enemy_query: Query<(Entity, &Transform), With<Enemy>>,
         mut player_weapon_query: Query<
             (Entity, &mut Transform, &mut PlayerWeapon),
-            (With<PlayerWeapon>, Without<Player>, Without<Enemy>),
+            (
+                With<PlayerWeapon>,
+                Without<Player>,
+                Without<Enemy>,
+                Without<Camera2d>,
+            ),
         >,
+        camera_query: Query<&Transform, With<Camera2d>>,
         mut collision_events: EventWriter<CollisionEvent>,
     ) {
         let character_size = Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE);
+        let camera_transform = camera_query.single();
 
         for (player_weapon_entity, player_weapon_transform, player_weapon) in
             &mut player_weapon_query
         {
             for (enemy_entity, enemy_transform) in &enemy_query {
+                // カメラ外の敵に攻撃判定はしない
+                if !is_inner_camera(camera_transform.translation, enemy_transform.translation) {
+                    continue;
+                }
                 let collision = collide(
                     player_weapon_transform.translation,
                     character_size,
@@ -1001,16 +1012,27 @@ pub mod game_scene {
     }
 
     #[allow(clippy::type_complexity)]
+    #[allow(clippy::too_many_arguments)]
     fn move_enemy_system(
         player_query: Query<&Transform, (With<Player>, Without<Enemy>)>,
-        mut enemy_query: Query<(&mut Transform, &mut Enemy), (With<Enemy>, Without<Player>)>,
-        wall_query: Query<&Transform, (With<Wall>, Without<Enemy>)>,
+        mut enemy_query: Query<
+            (&mut Transform, &mut Enemy),
+            (With<Enemy>, Without<Player>, Without<Camera2d>),
+        >,
+        wall_query: Query<&Transform, (With<Wall>, Without<Enemy>, Without<Camera2d>)>,
+        camera_query: Query<&Transform, With<Camera2d>>,
         mut collision_events: EventWriter<CollisionEvent>,
         mut commands: Commands,
         asset_server: Res<AssetServer>,
         mut texture_atlases: ResMut<Assets<TextureAtlas>>,
     ) {
+        let camera_transform = camera_query.single();
         for (mut enemy_transform, mut enemy) in &mut enemy_query {
+            // カメラ外の敵は動かさない
+            if !is_inner_camera(camera_transform.translation, enemy_transform.translation) {
+                continue;
+            }
+
             enemy.move_lifetime -= 1;
             // 現在の行動時間（移動）が終了した時
             if enemy.move_lifetime == 0 {
@@ -1259,5 +1281,10 @@ pub mod game_scene {
         if !player.live && timer.tick(time.delta()).finished() {
             game_state.set(GameState::Loading);
         }
+    }
+
+    fn is_inner_camera(camera_translation: Vec3, target_translation: Vec3) -> bool {
+        target_translation.x >= camera_translation.x - 320. - 16.
+            && target_translation.x < camera_translation.x + 320. + 16.
     }
 }
