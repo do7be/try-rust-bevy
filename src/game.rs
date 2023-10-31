@@ -1079,9 +1079,12 @@ pub mod game_scene {
                     }
                 }
 
-                // TODO: プレイヤーのいる方向にしか撃たないようにする
+                let player_transform = player_query.single();
+
                 if enemy.stop
                     && (enemy.kind == EnemyKind::RedDemon || enemy.kind == EnemyKind::Wizard)
+                    // プレイヤーのいる方向にしか撃たない
+                    && player_transform.translation.x <= enemy_transform.translation.x * enemy_transform.scale.x
                 {
                     let texture_handle = match enemy.kind {
                         EnemyKind::RedDemon => {
@@ -1115,7 +1118,6 @@ pub mod game_scene {
                         // 壁よりも手前に表示
                         1.,
                     );
-                    let player_transform = player_query.single();
 
                     commands.spawn((
                         OnGameScreen,
