@@ -126,7 +126,7 @@ pub mod game_scene {
         fn build(&self, app: &mut App) {
             app.insert_resource(FixedTime::new_from_secs(TIME_1F)) // 60FPS
                 .add_event::<CollisionEvent>()
-                .add_systems(OnEnter(GameState::Game), game_setup)
+                .add_systems(OnEnter(GameState::Game), (game_setup, spawn_enemy))
                 .add_systems(
                     Update,
                     (animate_sprite, move_camera, die_counter).run_if(in_state(GameState::Game)),
@@ -204,149 +204,6 @@ pub mod game_scene {
             Velocity(Vec2::new(0.0, 0.0)),
         ));
 
-        // Enemy
-        let texture_handle = asset_server.load("images/slime.png");
-        let texture_atlas = TextureAtlas::from_grid(
-            texture_handle,
-            Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE),
-            2,
-            1,
-            None,
-            None,
-        );
-        let texture_atlas_handle = texture_atlases.add(texture_atlas);
-        let animation_indices = AnimationIndices { first: 0, last: 1 };
-        commands.spawn((
-            OnGameScreen,
-            SpriteSheetBundle {
-                texture_atlas: texture_atlas_handle,
-                sprite: TextureAtlasSprite::new(animation_indices.first),
-                transform: Transform {
-                    translation: Vec3::new(TILE_SIZE * 12., TILE_SIZE * 2., 0.),
-                    scale: Vec3::new(-1., 1., 1.),
-                    ..default()
-                },
-                ..default()
-            },
-            animation_indices,
-            AnimationTimer(Timer::from_seconds(0.33, TimerMode::Repeating)),
-            Character,
-            Enemy {
-                kind: EnemyKind::Slime,
-                direction: AllDirection::Right,
-                move_lifetime: 30, // TODO
-                walk_step: ENEMY_WALK_STEP,
-                stop: false,
-            },
-        ));
-        // TODO: 共通化
-        let texture_handle = asset_server.load("images/mohican_lizard.png");
-        let texture_atlas = TextureAtlas::from_grid(
-            texture_handle,
-            Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE),
-            2,
-            1,
-            None,
-            None,
-        );
-        let texture_atlas_handle = texture_atlases.add(texture_atlas);
-        let animation_indices = AnimationIndices { first: 0, last: 1 };
-        commands.spawn((
-            OnGameScreen,
-            SpriteSheetBundle {
-                texture_atlas: texture_atlas_handle,
-                sprite: TextureAtlasSprite::new(animation_indices.first),
-                transform: Transform {
-                    translation: Vec3::new(TILE_SIZE * 6., TILE_SIZE * 11., 0.),
-                    scale: Vec3::new(-1., 1., 1.),
-                    ..default()
-                },
-                ..default()
-            },
-            animation_indices,
-            AnimationTimer(Timer::from_seconds(0.33, TimerMode::Repeating)),
-            Character,
-            Enemy {
-                kind: EnemyKind::Lizard,
-                direction: AllDirection::Right,
-                move_lifetime: 20, // TODO
-                walk_step: ENEMY_RIZZARD_WALK_STEP,
-                stop: false,
-            },
-        ));
-
-        // TODO: 共通化
-        let texture_handle = asset_server.load("images/wizard.png");
-        let texture_atlas = TextureAtlas::from_grid(
-            texture_handle,
-            Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE),
-            2,
-            1,
-            None,
-            None,
-        );
-        let texture_atlas_handle = texture_atlases.add(texture_atlas);
-        let animation_indices = AnimationIndices { first: 0, last: 1 };
-        commands.spawn((
-            OnGameScreen,
-            SpriteSheetBundle {
-                texture_atlas: texture_atlas_handle,
-                sprite: TextureAtlasSprite::new(animation_indices.first),
-                transform: Transform {
-                    translation: Vec3::new(TILE_SIZE * 22., TILE_SIZE * 11., 0.),
-                    scale: Vec3::new(-1., 1., 1.),
-                    ..default()
-                },
-                ..default()
-            },
-            animation_indices,
-            AnimationTimer(Timer::from_seconds(0.33, TimerMode::Repeating)),
-            Character,
-            Enemy {
-                kind: EnemyKind::Wizard,
-                direction: AllDirection::Right,
-                move_lifetime: 20, // TODO
-                walk_step: ENEMY_WALK_STEP,
-                stop: false,
-            },
-        ));
-
-        // TODO: 共通化
-        let texture_handle = asset_server.load("images/red_demon.png");
-        let texture_atlas = TextureAtlas::from_grid(
-            texture_handle,
-            Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE),
-            2,
-            1,
-            None,
-            None,
-        );
-        let texture_atlas_handle = texture_atlases.add(texture_atlas);
-        let animation_indices = AnimationIndices { first: 0, last: 1 };
-        commands.spawn((
-            OnGameScreen,
-            SpriteSheetBundle {
-                texture_atlas: texture_atlas_handle,
-                sprite: TextureAtlasSprite::new(animation_indices.first),
-                transform: Transform {
-                    translation: Vec3::new(TILE_SIZE * 27., TILE_SIZE * 11., 0.),
-                    scale: Vec3::new(-1., 1., 1.),
-                    ..default()
-                },
-                ..default()
-            },
-            animation_indices,
-            AnimationTimer(Timer::from_seconds(0.33, TimerMode::Repeating)),
-            Character,
-            Enemy {
-                kind: EnemyKind::RedDemon,
-                direction: AllDirection::Right,
-                move_lifetime: 20, // TODO
-                walk_step: ENEMY_WALK_STEP,
-                stop: false,
-            },
-        ));
-
         let mut map = match stage_state.get() {
             StageState::Stage1 => STAGE1_MAP,
             StageState::Stage2 | StageState::Boss => STAGE2_MAP,
@@ -409,6 +266,81 @@ pub mod game_scene {
                     ));
                 }
             }
+        }
+    }
+
+    fn spawn_enemy(
+        mut commands: Commands,
+        asset_server: Res<AssetServer>,
+        mut texture_atlases: ResMut<Assets<TextureAtlas>>,
+        stage_state: Res<State<StageState>>,
+    ) {
+        let mut spawn_position = match stage_state.get() {
+            StageState::Stage1 => STAGE1_ENEMY_POSITION.to_vec(),
+            StageState::Stage2 => STAGE2_ENEMY_POSITION.to_vec(),
+            StageState::Boss => vec![],
+        };
+
+        for (i, position) in spawn_position.iter().enumerate() {
+            let kind = match i % 4 {
+                0 => EnemyKind::Slime,
+                1 => EnemyKind::Lizard,
+                2 => EnemyKind::RedDemon,
+                3 => EnemyKind::Wizard,
+                _ => EnemyKind::Slime,
+            };
+            let image = match kind {
+                EnemyKind::Slime => "images/slime.png",
+                EnemyKind::Lizard => "images/mohican_lizard.png",
+                EnemyKind::RedDemon => "images/red_demon.png",
+                EnemyKind::Wizard => "images/wizard.png",
+            };
+            let texture_handle = asset_server.load(image);
+            let texture_atlas = TextureAtlas::from_grid(
+                texture_handle,
+                Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE),
+                2,
+                1,
+                None,
+                None,
+            );
+            let texture_atlas_handle = texture_atlases.add(texture_atlas);
+            let animation_indices = AnimationIndices { first: 0, last: 1 };
+            let move_lifetime = match kind {
+                EnemyKind::Slime => 30, // TODO
+                _ => 20,
+            };
+            let walk_step = match kind {
+                EnemyKind::Lizard => ENEMY_RIZZARD_WALK_STEP,
+                _ => ENEMY_WALK_STEP,
+            };
+            commands.spawn((
+                OnGameScreen,
+                SpriteSheetBundle {
+                    texture_atlas: texture_atlas_handle,
+                    sprite: TextureAtlasSprite::new(animation_indices.first),
+                    transform: Transform {
+                        translation: Vec3::new(
+                            TILE_SIZE * position.x as f32,
+                            TILE_SIZE * (14 - position.y) as f32,
+                            0.,
+                        ),
+                        scale: Vec3::new(-1., 1., 1.),
+                        ..default()
+                    },
+                    ..default()
+                },
+                animation_indices,
+                AnimationTimer(Timer::from_seconds(0.33, TimerMode::Repeating)),
+                Character,
+                Enemy {
+                    kind,
+                    direction: AllDirection::Right,
+                    move_lifetime,
+                    walk_step,
+                    stop: false,
+                },
+            ));
         }
     }
 
