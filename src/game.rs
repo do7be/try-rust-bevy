@@ -81,6 +81,9 @@ pub mod game_scene {
         lifetime: Timer,
     }
 
+    #[derive(Component)]
+    struct PlayerWeaponLimit;
+
     #[derive(Clone, PartialEq)]
     enum EnemyWeaponKind {
         Wind,
@@ -129,7 +132,13 @@ pub mod game_scene {
                 .add_systems(OnEnter(GameState::Game), (game_setup, spawn_enemy))
                 .add_systems(
                     Update,
-                    (animate_sprite, move_camera, die_counter).run_if(in_state(GameState::Game)),
+                    (
+                        animate_sprite,
+                        move_camera,
+                        move_player_weapon_limit.after(move_camera),
+                        die_counter,
+                    )
+                        .run_if(in_state(GameState::Game)),
                 )
                 .add_systems(
                     Update,
@@ -267,6 +276,35 @@ pub mod game_scene {
                 }
             }
         }
+
+        commands.spawn((
+            OnGameScreen,
+            SpriteBundle {
+                texture: asset_server.load("images/item_1.png"),
+                transform: Transform {
+                    translation: Vec3::new(0., CHARACTER_SIZE * 14_f32, 2.),
+                    ..default()
+                },
+                ..default()
+            },
+            PlayerWeaponLimit,
+        ));
+
+        // プレイヤーの武器の残数表示
+        for i in 1..=3 {
+            commands.spawn((
+                OnGameScreen,
+                SpriteBundle {
+                    texture: asset_server.load(format!("images/item_{}.png", i)),
+                    transform: Transform {
+                        translation: Vec3::new(0., CHARACTER_SIZE * (14 - i + 1) as f32, 2.),
+                        ..default()
+                    },
+                    ..default()
+                },
+                PlayerWeaponLimit,
+            ));
+        }
     }
 
     fn spawn_enemy(
@@ -358,6 +396,17 @@ pub mod game_scene {
             transform.translation.y = 224.; // 240 - 32 / 2
         }
     }
+
+    fn move_player_weapon_limit(
+        mut query: Query<&mut Transform, (With<PlayerWeaponLimit>, Without<Camera2d>)>,
+        camera_query: Query<&Transform, With<Camera2d>>,
+    ) {
+        let camera_transform = camera_query.single();
+        for mut transform in query.iter_mut() {
+            transform.translation.x = camera_transform.translation.x - (320. - TILE_SIZE / 2.);
+        }
+    }
+
     fn animate_sprite(
         time: Res<Time>,
         mut query: Query<(
