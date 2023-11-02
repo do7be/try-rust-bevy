@@ -1041,7 +1041,6 @@ pub mod game_scene {
     // 敵の武器と自分の接触判定
     #[allow(clippy::type_complexity)]
     fn check_collision_enemy_weapon_system(
-        mut commands: Commands,
         mut player_query: Query<
             (
                 &mut Transform,
@@ -1052,7 +1051,7 @@ pub mod game_scene {
             (With<Player>, Without<Enemy>),
         >,
         mut enemy_weapon_query: Query<
-            (Entity, &mut Transform),
+            &mut Transform,
             (With<EnemyWeapon>, Without<Enemy>, Without<Player>),
         >,
         mut collision_events: EventWriter<CollisionEvent>,
@@ -1062,7 +1061,12 @@ pub mod game_scene {
         let (mut player_transform, mut player, mut player_animation, mut player_texture_atlas) =
             player_query.single_mut();
 
-        for (enemy_weapon_entity, enemy_weapon_transform) in &mut enemy_weapon_query {
+        // デス中なら衝突判定を行わない
+        if !player.live {
+            return;
+        }
+
+        for enemy_weapon_transform in &mut enemy_weapon_query {
             // プレイヤーに当たったら死亡処理
             let collision = collide(
                 enemy_weapon_transform.translation,
@@ -1072,7 +1076,6 @@ pub mod game_scene {
             );
             if collision.is_some() {
                 collision_events.send_default();
-                commands.entity(enemy_weapon_entity).despawn();
                 die(
                     &mut player,
                     &mut player_transform,
