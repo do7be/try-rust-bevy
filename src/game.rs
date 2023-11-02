@@ -84,6 +84,12 @@ pub mod game_scene {
     #[derive(Component)]
     struct PlayerWeaponLimitStatus;
 
+    #[derive(Component)]
+    struct PlayerWeaponLimitStatusNumber {
+        kind: PlayerWeaponKind,
+        current: u8,
+    }
+
     #[derive(Clone, PartialEq)]
     enum EnemyWeaponKind {
         Wind,
@@ -166,6 +172,7 @@ pub mod game_scene {
                         check_collision_enemy_system,
                         check_collision_player_weapon_system,
                         check_collision_enemy_weapon_system,
+                        check_player_weapon_limit_status_system,
                         move_enemy_system,
                         move_enemy_weapon_system,
                         move_player_weapon_system,
@@ -301,18 +308,55 @@ pub mod game_scene {
         }
 
         // プレイヤーの武器の残数表示
+        let texture_handle = asset_server.load("images/status/number.png");
+        let texture_atlas = TextureAtlas::from_grid(
+            texture_handle,
+            Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE),
+            4,
+            1,
+            None,
+            None,
+        );
+        let texture_atlas_handle = texture_atlases.add(texture_atlas);
         for i in 1..=3 {
+            let y = CHARACTER_SIZE * (14 - i + 1) as f32;
+            // 残数の背景
             commands.spawn((
                 OnGameScreen,
                 SpriteBundle {
                     texture: asset_server.load(format!("images/status/item_{}.png", i)),
                     transform: Transform {
-                        translation: Vec3::new(0., CHARACTER_SIZE * (14 - i + 1) as f32, 2.),
+                        translation: Vec3::new(0., y, 2.),
                         ..default()
                     },
                     ..default()
                 },
                 PlayerWeaponLimitStatus,
+            ));
+
+            // 残数の数字
+            let animation_indices = AnimationIndices { first: 3, last: 3 };
+            commands.spawn((
+                OnGameScreen,
+                SpriteSheetBundle {
+                    texture_atlas: texture_atlas_handle.clone(),
+                    sprite: TextureAtlasSprite::new(animation_indices.last),
+                    transform: Transform {
+                        translation: Vec3::new(0., y, 3.),
+                        ..default()
+                    },
+                    ..default()
+                },
+                animation_indices,
+                PlayerWeaponLimitStatusNumber {
+                    kind: match i {
+                        1 => PlayerWeaponKind::Fire,
+                        2 => PlayerWeaponKind::Ice,
+                        3 => PlayerWeaponKind::Thunder,
+                        _ => PlayerWeaponKind::Fire,
+                    },
+                    current: 0,
+                },
             ));
         }
     }
@@ -323,7 +367,7 @@ pub mod game_scene {
         mut texture_atlases: ResMut<Assets<TextureAtlas>>,
         stage_state: Res<State<StageState>>,
     ) {
-        let mut spawn_position = match stage_state.get() {
+        let spawn_position = match stage_state.get() {
             StageState::Stage1 => STAGE1_ENEMY_POSITION.to_vec(),
             StageState::Stage2 => STAGE2_ENEMY_POSITION.to_vec(),
             StageState::Boss => vec![],
@@ -407,13 +451,33 @@ pub mod game_scene {
         }
     }
 
+    #[allow(clippy::type_complexity)]
     fn move_player_weapon_limit(
-        mut query: Query<&mut Transform, (With<PlayerWeaponLimitStatus>, Without<Camera2d>)>,
+        mut background_query: Query<
+            &mut Transform,
+            (
+                With<PlayerWeaponLimitStatus>,
+                Without<Camera2d>,
+                Without<PlayerWeaponLimitStatusNumber>,
+            ),
+        >,
+        mut number_query: Query<
+            &mut Transform,
+            (
+                With<PlayerWeaponLimitStatusNumber>,
+                Without<Camera2d>,
+                Without<PlayerWeaponLimitStatus>,
+            ),
+        >,
         camera_query: Query<&Transform, With<Camera2d>>,
     ) {
         let camera_transform = camera_query.single();
-        for mut transform in query.iter_mut() {
-            transform.translation.x = camera_transform.translation.x - (320. - TILE_SIZE / 2.);
+        let x = camera_transform.translation.x - (320. - TILE_SIZE / 2.);
+        for mut transform in background_query.iter_mut() {
+            transform.translation.x = x;
+        }
+        for mut transform in number_query.iter_mut() {
+            transform.translation.x = x;
         }
     }
 
@@ -446,6 +510,28 @@ pub mod game_scene {
         if transform.translation.x > TILE_SIZE * (MAP_WIDTH_TILES - 2) as f32 {
             stage_state.set(StageState::Stage2);
             game_state.set(GameState::Loading);
+        }
+    }
+
+    fn check_player_weapon_limit_status_system(
+        mut query: Query<
+            (&mut PlayerWeaponLimitStatusNumber, &mut TextureAtlasSprite),
+            With<PlayerWeaponLimitStatusNumber>,
+        >,
+        player_query: Query<&Player, With<Player>>,
+    ) {
+        let player = player_query.single();
+        for (mut status, mut texture) in query.iter_mut() {
+            let limit = match status.kind {
+                PlayerWeaponKind::Fire => player.weapon_limit.fire,
+                PlayerWeaponKind::Ice => player.weapon_limit.ice,
+                PlayerWeaponKind::Thunder => player.weapon_limit.thunder,
+                _ => 0,
+            };
+            if status.current != limit {
+                status.current = limit;
+                texture.index = limit as usize;
+            }
         }
     }
 
