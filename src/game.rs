@@ -109,6 +109,12 @@ pub mod game_scene {
         Down,
     }
 
+    struct PlayerJumpStatus {
+        jump: bool,
+        fall_time: f32,
+        jump_start_y: f32,
+    }
+
     #[derive(Debug)]
     struct PlayerWeaponLimit {
         fire: u8,
@@ -122,9 +128,7 @@ pub mod game_scene {
         walk: bool,
         grounded: bool,
         live: bool,
-        jump: bool,
-        fall_time: f32,
-        jump_start_y: f32,
+        jump_status: PlayerJumpStatus,
         weapon_limit: PlayerWeaponLimit,
     }
 
@@ -213,9 +217,11 @@ pub mod game_scene {
                 walk: false,
                 grounded: true,
                 live: true,
-                jump: false,
-                fall_time: 0.,
-                jump_start_y: 0.,
+                jump_status: PlayerJumpStatus {
+                    jump: false,
+                    fall_time: 0.,
+                    jump_start_y: 0.,
+                },
                 weapon_limit: PlayerWeaponLimit {
                     fire: 3,
                     ice: 3,
@@ -474,9 +480,9 @@ pub mod game_scene {
         if player.grounded && keyboard_input.just_pressed(KeyCode::X) {
             player.grounded = false;
             velocity.y = PLAYER_JUMP_FORCE;
-            player.jump = true;
-            player.jump_start_y = transform.translation.y;
-            player.fall_time = 0.;
+            player.jump_status.jump = true;
+            player.jump_status.jump_start_y = transform.translation.y;
+            player.jump_status.fall_time = 0.;
         }
 
         // Weapon
@@ -661,9 +667,9 @@ pub mod game_scene {
                 // 接してる壁がないなら落ちる
                 if fall_flag {
                     player.grounded = false;
-                    player.jump = false;
-                    player.jump_start_y = player_transform.translation.y;
-                    player.fall_time = 0.;
+                    player.jump_status.jump = false;
+                    player.jump_status.jump_start_y = player_transform.translation.y;
+                    player.jump_status.fall_time = 0.;
                 }
             }
         };
@@ -701,13 +707,13 @@ pub mod game_scene {
         }
 
         player_velocity.y -= GRAVITY * GRAVITY_TIME_STEP;
-        player.fall_time += GRAVITY_TIME_STEP;
+        player.jump_status.fall_time += GRAVITY_TIME_STEP;
 
-        let t = player.fall_time;
-        next_time_translation.y = if player.jump {
-            player.jump_start_y + PLAYER_JUMP_FORCE * t - 0.5 * GRAVITY * t * t
+        let t = player.jump_status.fall_time;
+        next_time_translation.y = if player.jump_status.jump {
+            player.jump_status.jump_start_y + PLAYER_JUMP_FORCE * t - 0.5 * GRAVITY * t * t
         } else {
-            player.jump_start_y - 0.5 * GRAVITY * t * t
+            player.jump_status.jump_start_y - 0.5 * GRAVITY * t * t
         };
 
         // 縦方向の判定
@@ -748,15 +754,15 @@ pub mod game_scene {
                         | Collision::Left
                         | Collision::Right => {
                             player_velocity.y = 0.;
-                            player.jump = false;
-                            player.fall_time = 0.;
+                            player.jump_status.jump = false;
+                            player.jump_status.fall_time = 0.;
 
                             // めり込まないように位置調整
                             if next_time_translation.y % CHARACTER_SIZE != 0.0 {
                                 next_time_translation.y = next_time_translation.y
                                     - (next_time_translation.y % CHARACTER_SIZE);
                             }
-                            player.jump_start_y = next_time_translation.y
+                            player.jump_status.jump_start_y = next_time_translation.y
                         }
                         _ => {}
                     }
