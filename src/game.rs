@@ -65,6 +65,7 @@ pub mod game_scene {
         move_lifetime: usize,
         walk_step: f32,
         stop: bool,
+        weapon_cooldown: Timer,
     }
 
     #[derive(Clone, PartialEq)]
@@ -431,6 +432,7 @@ pub mod game_scene {
                     move_lifetime,
                     walk_step,
                     stop: false,
+                    weapon_cooldown: Timer::from_seconds(ENEMY_WEAPON_LIFETIME, TimerMode::Once),
                 },
             ));
         }
@@ -1124,12 +1126,17 @@ pub mod game_scene {
         mut commands: Commands,
         asset_server: Res<AssetServer>,
         mut texture_atlases: ResMut<Assets<TextureAtlas>>,
+        time: Res<Time>,
     ) {
         let camera_transform = camera_query.single();
         for (mut enemy_transform, mut enemy) in &mut enemy_query {
             // カメラ外の敵は動かさない
             if !is_inner_camera(camera_transform.translation, enemy_transform.translation) {
                 continue;
+            }
+
+            if !enemy.weapon_cooldown.finished() {
+                enemy.weapon_cooldown.tick(time.delta());
             }
 
             enemy.move_lifetime -= 1;
@@ -1180,11 +1187,16 @@ pub mod game_scene {
 
                 let player_transform = player_query.single();
 
+                // RedDemonとWizardは止まったら武器を撃つ
                 if enemy.stop
                     && (enemy.kind == EnemyKind::RedDemon || enemy.kind == EnemyKind::Wizard)
                     // プレイヤーのいる方向にしか撃たない
                     && player_transform.translation.x <= enemy_transform.translation.x * enemy_transform.scale.x
+                    && enemy.weapon_cooldown.finished()
                 {
+                    // 連発できないよう武器が存在する期間のクールダウンタイムを開始する
+                    enemy.weapon_cooldown.reset();
+
                     let texture_handle = match enemy.kind {
                         EnemyKind::RedDemon => {
                             asset_server.load("images/effect/enemy_attack_shockwave.png")
