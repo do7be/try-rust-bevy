@@ -82,7 +82,7 @@ pub mod game_scene {
     }
 
     #[derive(Component)]
-    struct PlayerWeaponLimit;
+    struct PlayerWeaponLimitStatus;
 
     #[derive(Clone, PartialEq)]
     enum EnemyWeaponKind {
@@ -109,6 +109,13 @@ pub mod game_scene {
         Down,
     }
 
+    #[derive(Debug)]
+    struct PlayerWeaponLimit {
+        fire: u8,
+        ice: u8,
+        thunder: u8,
+    }
+
     #[derive(Component)]
     struct Player {
         direction: Direction,
@@ -118,6 +125,7 @@ pub mod game_scene {
         jump: bool,
         fall_time: f32,
         jump_start_y: f32,
+        weapon_limit: PlayerWeaponLimit,
     }
 
     #[derive(Resource, Deref, DerefMut)]
@@ -208,6 +216,11 @@ pub mod game_scene {
                 jump: false,
                 fall_time: 0.,
                 jump_start_y: 0.,
+                weapon_limit: PlayerWeaponLimit {
+                    fire: 3,
+                    ice: 3,
+                    thunder: 3,
+                },
             },
             Character,
             Velocity(Vec2::new(0.0, 0.0)),
@@ -293,7 +306,7 @@ pub mod game_scene {
                     },
                     ..default()
                 },
-                PlayerWeaponLimit,
+                PlayerWeaponLimitStatus,
             ));
         }
     }
@@ -389,7 +402,7 @@ pub mod game_scene {
     }
 
     fn move_player_weapon_limit(
-        mut query: Query<&mut Transform, (With<PlayerWeaponLimit>, Without<Camera2d>)>,
+        mut query: Query<&mut Transform, (With<PlayerWeaponLimitStatus>, Without<Camera2d>)>,
         camera_query: Query<&Transform, With<Camera2d>>,
     ) {
         let camera_transform = camera_query.single();
@@ -484,6 +497,17 @@ pub mod game_scene {
                 return;
             }
 
+            // 使用可能回数がもう0なら撃てない
+            let limit = match weapon_kind {
+                PlayerWeaponKind::Fire => player.weapon_limit.fire,
+                PlayerWeaponKind::Ice => player.weapon_limit.ice,
+                PlayerWeaponKind::Thunder => player.weapon_limit.thunder,
+                _ => 1,
+            };
+            if limit == 0 {
+                return;
+            }
+
             let texture_handle = match weapon_kind {
                 PlayerWeaponKind::Fire => asset_server.load("images/effect/fire.png"),
                 PlayerWeaponKind::Ice => asset_server.load("images/effect/ice.png"),
@@ -558,6 +582,14 @@ pub mod game_scene {
                     ),
                 },
             ));
+
+            // 使用したら回数を1減らす
+            match weapon_kind {
+                PlayerWeaponKind::Fire => player.weapon_limit.fire -= 1,
+                PlayerWeaponKind::Ice => player.weapon_limit.ice -= 1,
+                PlayerWeaponKind::Thunder => player.weapon_limit.thunder -= 1,
+                _ => {}
+            };
 
             // サンダーは最初だけ一瞬止めるのでタイマーをセット
             if weapon_kind == PlayerWeaponKind::Thunder {
