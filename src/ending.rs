@@ -39,7 +39,7 @@ pub mod ending_scene {
     fn ending_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         commands.spawn((
             SpriteBundle {
-                texture: asset_server.load("images/scene_5.png"),
+                texture: asset_server.load("images/scene/scene_5.png"),
                 sprite: Sprite::default(),
                 ..default()
             },
@@ -54,7 +54,7 @@ pub mod ending_scene {
         asset_server: Res<AssetServer>,
     ) {
         let mut asset = query.single_mut();
-        *asset = asset_server.load(format!("images/scene_{}.png", scene_number.number));
+        *asset = asset_server.load(format!("images/scene/scene_{}.png", scene_number.number));
     }
 
     fn control_keys(

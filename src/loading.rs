@@ -28,7 +28,7 @@ pub mod loading_scene {
     fn loading_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         commands.spawn((
             SpriteBundle {
-                texture: asset_server.load("images/scene_2.png"),
+                texture: asset_server.load("images/scene/scene_2.png"),
                 sprite: Sprite::default(),
                 ..default()
             },

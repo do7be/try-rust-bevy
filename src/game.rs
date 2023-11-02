@@ -179,7 +179,7 @@ pub mod game_scene {
         )));
 
         // Player
-        let texture_handle = asset_server.load("images/char.png");
+        let texture_handle = asset_server.load("images/character/char.png");
         let texture_atlas = TextureAtlas::from_grid(
             texture_handle,
             Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE),
@@ -230,13 +230,17 @@ pub mod game_scene {
                         SpriteBundle {
                             texture: asset_server.load(if *map_char == 'A' {
                                 match stage_state.get() {
-                                    StageState::Stage1 => "images/map_1.png",
-                                    StageState::Stage2 | StageState::Boss => "images/map2_1.png",
+                                    StageState::Stage1 => "images/map/map_1.png",
+                                    StageState::Stage2 | StageState::Boss => {
+                                        "images/map/map2_1.png"
+                                    }
                                 }
                             } else {
                                 match stage_state.get() {
-                                    StageState::Stage1 => "images/map_2.png",
-                                    StageState::Stage2 | StageState::Boss => "images/map2_2.png",
+                                    StageState::Stage1 => "images/map/map_2.png",
+                                    StageState::Stage2 | StageState::Boss => {
+                                        "images/map/map2_2.png"
+                                    }
                                 }
                             }),
                             transform: Transform {
@@ -257,8 +261,8 @@ pub mod game_scene {
                         OnGameScreen,
                         SpriteBundle {
                             texture: asset_server.load(match stage_state.get() {
-                                StageState::Stage1 => "images/map_3.png",
-                                StageState::Stage2 | StageState::Boss => "images/map2_3.png",
+                                StageState::Stage1 => "images/map/map_3.png",
+                                StageState::Stage2 | StageState::Boss => "images/map/map2_3.png",
                             }),
                             transform: Transform {
                                 translation: Vec3::new(
@@ -277,25 +281,12 @@ pub mod game_scene {
             }
         }
 
-        commands.spawn((
-            OnGameScreen,
-            SpriteBundle {
-                texture: asset_server.load("images/item_1.png"),
-                transform: Transform {
-                    translation: Vec3::new(0., CHARACTER_SIZE * 14_f32, 2.),
-                    ..default()
-                },
-                ..default()
-            },
-            PlayerWeaponLimit,
-        ));
-
         // プレイヤーの武器の残数表示
         for i in 1..=3 {
             commands.spawn((
                 OnGameScreen,
                 SpriteBundle {
-                    texture: asset_server.load(format!("images/item_{}.png", i)),
+                    texture: asset_server.load(format!("images/status/item_{}.png", i)),
                     transform: Transform {
                         translation: Vec3::new(0., CHARACTER_SIZE * (14 - i + 1) as f32, 2.),
                         ..default()
@@ -328,10 +319,10 @@ pub mod game_scene {
                 _ => EnemyKind::Slime,
             };
             let image = match kind {
-                EnemyKind::Slime => "images/slime.png",
-                EnemyKind::Lizard => "images/mohican_lizard.png",
-                EnemyKind::RedDemon => "images/red_demon.png",
-                EnemyKind::Wizard => "images/wizard.png",
+                EnemyKind::Slime => "images/character/slime.png",
+                EnemyKind::Lizard => "images/character/mohican_lizard.png",
+                EnemyKind::RedDemon => "images/character/red_demon.png",
+                EnemyKind::Wizard => "images/character/wizard.png",
             };
             let texture_handle = asset_server.load(image);
             let texture_atlas = TextureAtlas::from_grid(
@@ -494,10 +485,10 @@ pub mod game_scene {
             }
 
             let texture_handle = match weapon_kind {
-                PlayerWeaponKind::Fire => asset_server.load("images/fire.png"),
-                PlayerWeaponKind::Ice => asset_server.load("images/ice.png"),
-                PlayerWeaponKind::Thunder => asset_server.load("images/thunder.png"),
-                PlayerWeaponKind::Sword => asset_server.load("images/sword.png"),
+                PlayerWeaponKind::Fire => asset_server.load("images/effect/fire.png"),
+                PlayerWeaponKind::Ice => asset_server.load("images/effect/ice.png"),
+                PlayerWeaponKind::Thunder => asset_server.load("images/effect/thunder.png"),
+                PlayerWeaponKind::Sword => asset_server.load("images/effect/sword.png"),
             };
             let texture_atlas = TextureAtlas::from_grid(
                 texture_handle,
@@ -1069,10 +1060,12 @@ pub mod game_scene {
                 {
                     let texture_handle = match enemy.kind {
                         EnemyKind::RedDemon => {
-                            asset_server.load("images/enemy_attack_shockwave.png")
+                            asset_server.load("images/effect/enemy_attack_shockwave.png")
                         }
-                        EnemyKind::Wizard => asset_server.load("images/enemy_attack_wind.png"),
-                        _ => asset_server.load("images/enemy_attack_wind.png"),
+                        EnemyKind::Wizard => {
+                            asset_server.load("images/effect/enemy_attack_wind.png")
+                        }
+                        _ => asset_server.load("images/effect/enemy_attack_wind.png"),
                     };
                     let texture_atlas = TextureAtlas::from_grid(
                         texture_handle,

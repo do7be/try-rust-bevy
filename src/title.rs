@@ -23,7 +23,7 @@ pub mod title_scene {
     fn title_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         commands.spawn((
             SpriteBundle {
-                texture: asset_server.load("images/scene_1.png"),
+                texture: asset_server.load("images/scene/scene_1.png"),
                 sprite: Sprite::default(),
                 ..default()
             },

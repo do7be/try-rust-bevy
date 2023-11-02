@@ -31,8 +31,8 @@ pub mod stage_title_scene {
         commands.spawn((
             SpriteBundle {
                 texture: asset_server.load(match stage_state.get() {
-                    StageState::Stage1 => "images/scene_3.png",
-                    StageState::Stage2 | StageState::Boss => "images/scene_4.png",
+                    StageState::Stage1 => "images/scene/scene_3.png",
+                    StageState::Stage2 | StageState::Boss => "images/scene/scene_4.png",
                 }),
                 sprite: Sprite::default(),
                 ..default()
