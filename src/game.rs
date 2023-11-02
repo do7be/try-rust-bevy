@@ -69,6 +69,39 @@ pub mod game_scene {
     }
 
     #[derive(Clone, PartialEq)]
+    enum EnemyWeaponKind {
+        Wind,
+        ShockWave,
+    }
+
+    #[derive(Component)]
+    struct EnemyWeapon {
+        kind: EnemyWeaponKind,
+        lifetime: Timer,
+        step: Vec2,
+    }
+
+    #[derive(Component)]
+    struct Player {
+        direction: Direction,
+        walk: bool,
+        grounded: bool,
+        live: bool,
+        jump_status: PlayerJumpStatus,
+        weapon_limit: PlayerWeaponLimit,
+    }
+
+    #[derive(Debug)]
+    struct PlayerWeaponLimit {
+        fire: u8,
+        ice: u8,
+        thunder: u8,
+    }
+
+    #[derive(Resource, Deref, DerefMut)]
+    struct ThunderStopTimer(Timer);
+
+    #[derive(Clone, PartialEq)]
     enum PlayerWeaponKind {
         Sword,
         Fire,
@@ -91,17 +124,15 @@ pub mod game_scene {
         current: u8,
     }
 
-    #[derive(Clone, PartialEq)]
-    enum EnemyWeaponKind {
-        Wind,
-        ShockWave,
+    struct PlayerJumpStatus {
+        jump: bool,
+        fall_time: f32,
+        jump_start_y: f32,
     }
 
     #[derive(Component)]
-    struct EnemyWeapon {
-        kind: EnemyWeaponKind,
-        lifetime: Timer,
-        step: Vec2,
+    struct PlayerWeaponLimitItem {
+        kind: PlayerWeaponKind,
     }
 
     enum Direction {
@@ -115,32 +146,6 @@ pub mod game_scene {
         Up,
         Down,
     }
-
-    struct PlayerJumpStatus {
-        jump: bool,
-        fall_time: f32,
-        jump_start_y: f32,
-    }
-
-    #[derive(Debug)]
-    struct PlayerWeaponLimit {
-        fire: u8,
-        ice: u8,
-        thunder: u8,
-    }
-
-    #[derive(Component)]
-    struct Player {
-        direction: Direction,
-        walk: bool,
-        grounded: bool,
-        live: bool,
-        jump_status: PlayerJumpStatus,
-        weapon_limit: PlayerWeaponLimit,
-    }
-
-    #[derive(Resource, Deref, DerefMut)]
-    struct ThunderStopTimer(Timer);
 
     pub struct GamePlugin;
 
@@ -173,6 +178,7 @@ pub mod game_scene {
                         check_collision_enemy_system,
                         check_collision_player_weapon_system,
                         check_collision_enemy_weapon_system,
+                        check_collision_player_weapon_limit_item_system,
                         check_player_weapon_limit_status_system,
                         move_enemy_system,
                         move_enemy_weapon_system,
@@ -929,6 +935,7 @@ pub mod game_scene {
         >,
         camera_query: Query<&Transform, With<Camera2d>>,
         mut collision_events: EventWriter<CollisionEvent>,
+        asset_server: Res<AssetServer>,
     ) {
         let character_size = Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE);
         let camera_transform = camera_query.single();
@@ -956,6 +963,39 @@ pub mod game_scene {
                         commands.entity(player_weapon_entity).despawn();
                     }
                     commands.entity(enemy_entity).despawn();
+
+                    // 20%の確率で武器を回復させるアイテムをドロップする
+                    let mut rng = rand::thread_rng();
+                    let weapon_drop_random = rng.gen_range(0..=4);
+                    if weapon_drop_random == 0 {
+                        let weapon_kind_index = rng.gen_range(1..=3);
+
+                        // 武器使用可能回数を増やすアイテムをドロップ
+                        commands.spawn((
+                            OnGameScreen,
+                            SpriteBundle {
+                                texture: asset_server
+                                    .load(format!("images/status/item_{}.png", weapon_kind_index)),
+                                transform: Transform {
+                                    translation: Vec3::new(
+                                        enemy_transform.translation.x,
+                                        enemy_transform.translation.y,
+                                        1.,
+                                    ),
+                                    ..default()
+                                },
+                                ..default()
+                            },
+                            PlayerWeaponLimitItem {
+                                kind: match weapon_kind_index {
+                                    1 => PlayerWeaponKind::Fire,
+                                    2 => PlayerWeaponKind::Ice,
+                                    3 => PlayerWeaponKind::Thunder,
+                                    _ => PlayerWeaponKind::Fire,
+                                },
+                            },
+                        ));
+                    }
                 }
             }
         }
@@ -1361,6 +1401,55 @@ pub mod game_scene {
                     AllDirection::Right => enemy_transform.scale.x = -1.,
                     _ => {}
                 }
+            }
+        }
+    }
+
+    // 武器の使用可能回数を回復させるアイテムとの衝突判定
+    fn check_collision_player_weapon_limit_item_system(
+        mut commands: Commands,
+        mut player_query: Query<(&Transform, &mut Player), With<Player>>,
+        mut weapon_limit_item_query: Query<
+            (Entity, &Transform, &PlayerWeaponLimitItem),
+            With<PlayerWeaponLimitItem>,
+        >,
+        mut collision_events: EventWriter<CollisionEvent>,
+    ) {
+        let character_size = Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE);
+        let (player_transform, mut player) = player_query.single_mut();
+
+        // デス中なら衝突判定を行わない
+        if !player.live {
+            return;
+        }
+
+        for (weapon_limit_item_entity, weapon_limit_item_transform, weapon_limit_item) in
+            &mut weapon_limit_item_query
+        {
+            // プレイヤーに当たったら使用可能回数を増やす
+            let collision = collide(
+                weapon_limit_item_transform.translation,
+                character_size,
+                player_transform.translation,
+                character_size,
+            );
+            if collision.is_some() {
+                collision_events.send_default();
+
+                match weapon_limit_item.kind {
+                    PlayerWeaponKind::Fire => {
+                        player.weapon_limit.fire = (player.weapon_limit.fire + 1).min(3)
+                    }
+                    PlayerWeaponKind::Ice => {
+                        player.weapon_limit.ice = (player.weapon_limit.ice + 1).min(3)
+                    }
+                    PlayerWeaponKind::Thunder => {
+                        player.weapon_limit.thunder = (player.weapon_limit.thunder + 1).min(3)
+                    }
+                    _ => {}
+                };
+
+                commands.entity(weapon_limit_item_entity).despawn();
             }
         }
     }
