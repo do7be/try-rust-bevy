@@ -8,6 +8,7 @@ pub mod game_scene {
     const FPS: usize = 60;
     const TIME_1F: f32 = 1. / FPS as f32;
     const CHARACTER_SIZE: f32 = 32.;
+    const BOSS_SIZE: f32 = 64.;
     const TILE_SIZE: f32 = 32.;
     const PLAYER_JUMP_FORCE: f32 = 44.;
     const PLAYER_WALK_STEP: f32 = 4.;
@@ -56,7 +57,7 @@ pub mod game_scene {
         move_lifetime: usize,
         stop: bool,
         weapon_cooldown: Timer,
-        life: u8,
+        life: i32,
     }
 
     #[derive(PartialEq)]
@@ -164,6 +165,7 @@ pub mod game_scene {
                 .add_state::<BossState>()
                 .add_event::<CollisionEvent>()
                 .add_systems(OnEnter(GameState::Game), (game_setup, spawn_enemy))
+                .add_systems(OnEnter(BossState::Active), boss_setup)
                 .add_systems(
                     Update,
                     (
@@ -186,6 +188,13 @@ pub mod game_scene {
                         .run_if(in_state(GameState::Game))
                         .run_if(in_state(StageState::Stage2).or_else(in_state(StageState::Boss)))
                         .run_if(in_state(BossState::InActive)),
+                )
+                .add_systems(
+                    Update,
+                    (check_defeat_boss_system)
+                        .run_if(in_state(GameState::Game))
+                        .run_if(in_state(StageState::Boss))
+                        .run_if(in_state(BossState::Active)),
                 )
                 .add_systems(
                     FixedUpdate,
@@ -245,7 +254,7 @@ pub mod game_scene {
                         _ => TILE_SIZE * 2.,
                     },
                     TILE_SIZE * 2.,
-                    1.,
+                    2.,
                 ),
                 ..default()
             },
@@ -391,6 +400,43 @@ pub mod game_scene {
                 },
             ));
         }
+    }
+
+    fn boss_setup(
+        mut commands: Commands,
+        asset_server: Res<AssetServer>,
+        mut texture_atlases: ResMut<Assets<TextureAtlas>>,
+    ) {
+        // ボスを出現
+        let texture_handle = asset_server.load("images/character/boss.png");
+        let texture_atlas = TextureAtlas::from_grid(
+            texture_handle,
+            Vec2::new(BOSS_SIZE, BOSS_SIZE),
+            4,
+            1,
+            None,
+            None,
+        );
+        let texture_atlas_handle = texture_atlases.add(texture_atlas);
+        let animation_indices = AnimationIndices { first: 0, last: 1 };
+        commands.spawn((
+            OnGameScreen,
+            SpriteSheetBundle {
+                texture_atlas: texture_atlas_handle,
+                sprite: TextureAtlasSprite::new(animation_indices.first),
+                transform: Transform::from_xyz(TILE_SIZE * 96., TILE_SIZE * 2.5, 1.),
+                ..default()
+            },
+            animation_indices,
+            AnimationTimer(Timer::from_seconds(0.33, TimerMode::Repeating)),
+            Boss {
+                direction: AllDirection::Right,
+                life: 20,
+                stop: false,
+                move_lifetime: 30, // TODO
+                weapon_cooldown: Timer::from_seconds(ENEMY_WEAPON_LIFETIME, TimerMode::Once), // TODO
+            },
+        ));
     }
 
     fn spawn_enemy(
@@ -558,8 +604,18 @@ pub mod game_scene {
         let transform = query.single_mut();
         if transform.translation.x > TILE_SIZE * (MAP_WIDTH_TILES - 11) as f32 {
             boss_state.set(BossState::Active);
-            // TODO: Boss Spawn
             // TODO: Wall Spawn
+            // TODO: Enemy Despawn
+        }
+    }
+
+    fn check_defeat_boss_system(
+        mut game_state: ResMut<NextState<GameState>>,
+        mut query: Query<&Boss, With<Boss>>,
+    ) {
+        let boss = query.single_mut();
+        if boss.life <= 0 {
+            game_state.set(GameState::Ending);
         }
     }
 
