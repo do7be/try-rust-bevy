@@ -405,6 +405,7 @@ pub mod game_scene {
     // ボス戦開始時のセットアップ
     fn boss_setup(
         mut commands: Commands,
+        mut enemy_query: Query<Entity, With<Enemy>>,
         asset_server: Res<AssetServer>,
         mut texture_atlases: ResMut<Assets<TextureAtlas>>,
     ) {
@@ -440,7 +441,10 @@ pub mod game_scene {
             ));
         }
 
-        // TODO: Enemy Despawn
+        // ザコ敵はすべて消す
+        for enemy_entity in enemy_query.iter_mut() {
+            commands.entity(enemy_entity).despawn();
+        }
 
         // ボスを出現
         let texture_handle = asset_server.load("images/character/boss.png");
