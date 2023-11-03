@@ -402,11 +402,46 @@ pub mod game_scene {
         }
     }
 
+    // ボス戦開始時のセットアップ
     fn boss_setup(
         mut commands: Commands,
         asset_server: Res<AssetServer>,
         mut texture_atlases: ResMut<Assets<TextureAtlas>>,
     ) {
+        // 壁を出現
+        let walls = [
+            (78, 2),
+            (78, 3),
+            (99, 2),
+            (99, 3),
+            (99, 4),
+            (99, 5),
+            (99, 6),
+            (99, 7),
+            (99, 8),
+        ];
+        for (column, row) in walls {
+            commands.spawn((
+                OnGameScreen,
+                SpriteBundle {
+                    texture: asset_server.load("images/map/map2_3.png"),
+                    transform: Transform {
+                        translation: Vec3::new(
+                            TILE_SIZE * column as f32,
+                            CHARACTER_SIZE * row as f32,
+                            0.,
+                        ),
+                        ..default()
+                    },
+                    ..default()
+                },
+                Wall,
+                Collider,
+            ));
+        }
+
+        // TODO: Enemy Despawn
+
         // ボスを出現
         let texture_handle = asset_server.load("images/character/boss.png");
         let texture_atlas = TextureAtlas::from_grid(
@@ -424,7 +459,7 @@ pub mod game_scene {
             SpriteSheetBundle {
                 texture_atlas: texture_atlas_handle,
                 sprite: TextureAtlasSprite::new(animation_indices.first),
-                transform: Transform::from_xyz(TILE_SIZE * 96., TILE_SIZE * 2.5, 1.),
+                transform: Transform::from_xyz(TILE_SIZE * 96., TILE_SIZE * 2.5, 0.),
                 ..default()
             },
             animation_indices,
@@ -604,8 +639,6 @@ pub mod game_scene {
         let transform = query.single_mut();
         if transform.translation.x > TILE_SIZE * (MAP_WIDTH_TILES - 11) as f32 {
             boss_state.set(BossState::Active);
-            // TODO: Wall Spawn
-            // TODO: Enemy Despawn
         }
     }
 
