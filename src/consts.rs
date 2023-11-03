@@ -12,10 +12,17 @@ pub enum GameState {
 
 #[derive(Clone, Copy, Default, Eq, PartialEq, Debug, Hash, States)]
 pub enum StageState {
-    #[default]
     Stage1,
     Stage2,
+    #[default]
     Boss,
+}
+
+#[derive(Clone, Copy, Default, Eq, PartialEq, Debug, Hash, States)]
+pub enum BossState {
+    #[default]
+    InActive,
+    Active,
 }
 
 pub const STAGE1_MAP: [&str; 15] = [

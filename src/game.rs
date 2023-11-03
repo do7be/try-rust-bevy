@@ -50,6 +50,15 @@ pub mod game_scene {
     #[derive(Event, Default)]
     struct CollisionEvent;
 
+    #[derive(Component)]
+    struct Boss {
+        direction: AllDirection,
+        move_lifetime: usize,
+        stop: bool,
+        weapon_cooldown: Timer,
+        life: u8,
+    }
+
     #[derive(PartialEq)]
     enum EnemyKind {
         Slime,
@@ -152,6 +161,7 @@ pub mod game_scene {
     impl Plugin for GamePlugin {
         fn build(&self, app: &mut App) {
             app.insert_resource(FixedTime::new_from_secs(TIME_1F)) // 60FPS
+                .add_state::<BossState>()
                 .add_event::<CollisionEvent>()
                 .add_systems(OnEnter(GameState::Game), (game_setup, spawn_enemy))
                 .add_systems(
@@ -169,6 +179,13 @@ pub mod game_scene {
                     (check_stage1_clear_system)
                         .run_if(in_state(GameState::Game))
                         .run_if(in_state(StageState::Stage1)),
+                )
+                .add_systems(
+                    Update,
+                    (check_stage2_appear_boss_system)
+                        .run_if(in_state(GameState::Game))
+                        .run_if(in_state(StageState::Stage2).or_else(in_state(StageState::Boss)))
+                        .run_if(in_state(BossState::InActive)),
                 )
                 .add_systems(
                     FixedUpdate,
@@ -221,7 +238,15 @@ pub mod game_scene {
             SpriteSheetBundle {
                 texture_atlas: texture_atlas_handle,
                 sprite: TextureAtlasSprite::new(animation_indices.first),
-                transform: Transform::from_xyz(TILE_SIZE * 2., TILE_SIZE * 2., 1.),
+                transform: Transform::from_xyz(
+                    match stage_state.get() {
+                        // ボス戦のリスポーン位置はステージ途中
+                        StageState::Boss => TILE_SIZE * 75.,
+                        _ => TILE_SIZE * 2.,
+                    },
+                    TILE_SIZE * 2.,
+                    1.,
+                ),
                 ..default()
             },
             animation_indices,
@@ -447,16 +472,21 @@ pub mod game_scene {
     fn move_camera(
         query: Query<&Transform, (With<Player>, Without<Camera2d>)>,
         mut camera_query: Query<&mut Transform, With<Camera2d>>,
+        boss_state: Res<State<BossState>>,
     ) {
-        let player_transform = query.single();
-        for mut transform in camera_query.iter_mut() {
-            transform.translation.x = player_transform
-                .translation
-                .x
-                .max(304.) // 320 - 32 / 2 (タイルの中心が0,0座標なため)
-                .min(TILE_SIZE * (MAP_WIDTH_TILES - 11) as f32 - 16.);
-            transform.translation.y = 224.; // 240 - 32 / 2
+        // ボス戦中は右端でカメラ固定
+        if boss_state.get() == &BossState::Active {
+            return;
         }
+
+        let player_transform = query.single();
+        let mut transform = camera_query.single_mut();
+        transform.translation.x = player_transform
+            .translation
+            .x
+            .max(304.) // 320 - 32 / 2 (タイルの中心が0,0座標なため)
+            .min(TILE_SIZE * (MAP_WIDTH_TILES - 11) as f32 - 16.);
+        transform.translation.y = 224.; // 240 - 32 / 2
     }
 
     #[allow(clippy::type_complexity)]
@@ -518,6 +548,18 @@ pub mod game_scene {
         if transform.translation.x > TILE_SIZE * (MAP_WIDTH_TILES - 2) as f32 {
             stage_state.set(StageState::Stage2);
             game_state.set(GameState::Loading);
+        }
+    }
+
+    fn check_stage2_appear_boss_system(
+        mut boss_state: ResMut<NextState<BossState>>,
+        mut query: Query<&Transform, With<Player>>,
+    ) {
+        let transform = query.single_mut();
+        if transform.translation.x > TILE_SIZE * (MAP_WIDTH_TILES - 11) as f32 {
+            boss_state.set(BossState::Active);
+            // TODO: Boss Spawn
+            // TODO: Wall Spawn
         }
     }
 
