@@ -12,6 +12,7 @@ pub mod game_scene {
     const CHARACTER_SIZE: f32 = 32.;
     const BOSS_SIZE: f32 = 64.;
     const TILE_SIZE: f32 = 32.;
+    const LIFE_SIZE: f32 = 16.;
     const PLAYER_JUMP_FORCE: f32 = 44.;
     const PLAYER_WALK_STEP: f32 = 4.;
     const PLAYER_WEAPON_STEP: f32 = 8.;
@@ -24,6 +25,7 @@ pub mod game_scene {
     const GRAVITY: f32 = 9.81;
     const GRAVITY_TIME_STEP: f32 = 0.24; // FPS通りだと重力加速が少ないので経過時間を補正
     const MAP_WIDTH_TILES: u32 = 100;
+    const MAP_HEIGHT_TILES: u32 = 15;
     const ENEMY_WALK_STEP: f32 = 1.;
     const ENEMY_RIZZARD_WALK_STEP: f32 = 4.;
 
@@ -62,6 +64,11 @@ pub mod game_scene {
         weapon_cooldown: Timer,
         damage_cooldown: Timer,
         life: i32,
+    }
+
+    #[derive(Component)]
+    struct BossLife {
+        index: u8,
     }
 
     #[derive(PartialEq)]
@@ -487,6 +494,29 @@ pub mod game_scene {
                     .clone(), // TODO
             },
         ));
+
+        // ボスの体力
+        for index in 1..=20 {
+            commands.spawn((
+                OnGameScreen,
+                SpriteBundle {
+                    texture: asset_server.load("images/status/life.png"),
+                    // 画面右上端から表示する。カメラを16pxずらしているのでややこしい
+                    transform: Transform::from_xyz(
+                        TILE_SIZE * (MAP_WIDTH_TILES - 1) as f32
+                            - TILE_SIZE / 2.
+                            - LIFE_SIZE / 2.
+                            - LIFE_SIZE * ((index - 1) % 10) as f32,
+                        480. - TILE_SIZE / 2.
+                            - LIFE_SIZE / 2.
+                            - (if index > 10 { LIFE_SIZE } else { 0. }),
+                        0.,
+                    ),
+                    ..default()
+                },
+                BossLife { index },
+            ));
+        }
     }
 
     fn spawn_enemy(
@@ -1169,6 +1199,7 @@ pub mod game_scene {
             (Entity, &mut Transform, &mut PlayerWeapon),
             (With<PlayerWeapon>, Without<Boss>),
         >,
+        mut boss_life_query: Query<(Entity, &BossLife), With<BossLife>>,
         mut collision_events: EventWriter<CollisionEvent>,
         timer: Res<Time>,
     ) {
@@ -1203,6 +1234,15 @@ pub mod game_scene {
                 {
                     commands.entity(player_weapon_entity).despawn();
                 }
+
+                // ダメージ受けた分のライフの表示も消す
+                for (boss_life_entity, boss_life) in boss_life_query.iter_mut() {
+                    if boss_life.index > boss.life as u8 {
+                        commands.entity(boss_life_entity).despawn();
+                    }
+                }
+
+                return;
             }
         }
     }
