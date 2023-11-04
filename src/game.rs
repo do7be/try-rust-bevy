@@ -18,7 +18,7 @@ pub mod game_scene {
     const PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE: f32 = 30. * TIME_1F;
     const PLAYER_WEAPON_LIFETIME_FOR_THUNDER: f32 = 45. * TIME_1F;
     const ENEMY_WEAPON_LIFETIME: f32 = 60. * TIME_1F;
-    const BOSS_DAMAGE_COOLTIME: f32 = 120. * TIME_1F;
+    const BOSS_DAMAGE_COOLTIME: f32 = 30. * TIME_1F;
     const GRAVITY: f32 = 9.81;
     const GRAVITY_TIME_STEP: f32 = 0.24; // FPS通りだと重力加速が少ないので経過時間を補正
     const MAP_WIDTH_TILES: u32 = 100;
@@ -196,6 +196,7 @@ pub mod game_scene {
                     (
                         check_cllision_player_weapon_for_boss_system,
                         check_defeat_boss_system,
+                        boss_flash_system,
                     )
                         .run_if(in_state(GameState::Game))
                         .run_if(in_state(StageState::Boss))
@@ -660,6 +661,20 @@ pub mod game_scene {
         if boss.life <= 0 {
             game_state.set(GameState::Ending);
         }
+    }
+
+    fn boss_flash_system(mut query: Query<(&Boss, &mut TextureAtlasSprite), With<Boss>>) {
+        let (boss, mut texture) = query.single_mut();
+        if boss.damage_cooldown.finished() {
+            return;
+        }
+
+        let alpha = if (boss.damage_cooldown.remaining_secs() / TIME_1F) % 10. > 7. {
+            0.
+        } else {
+            1.
+        };
+        texture.color.set_a(alpha);
     }
 
     fn check_player_weapon_limit_status_system(
