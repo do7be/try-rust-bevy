@@ -1,4 +1,6 @@
 pub mod game_scene {
+    use std::time::Duration;
+
     use bevy::prelude::*;
     use bevy::sprite::collide_aabb::{collide, Collision};
     use rand::Rng;
@@ -480,7 +482,9 @@ pub mod game_scene {
                 stop: false,
                 move_lifetime: 30, // TODO
                 weapon_cooldown: Timer::from_seconds(ENEMY_WEAPON_LIFETIME, TimerMode::Once), // TODO
-                damage_cooldown: Timer::from_seconds(BOSS_DAMAGE_COOLTIME, TimerMode::Once), // TODO
+                damage_cooldown: Timer::from_seconds(BOSS_DAMAGE_COOLTIME, TimerMode::Once)
+                    .tick(Duration::from_secs_f32(BOSS_DAMAGE_COOLTIME))
+                    .clone(), // TODO
             },
         ));
     }
