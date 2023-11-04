@@ -18,6 +18,7 @@ pub mod game_scene {
     const PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE: f32 = 30. * TIME_1F;
     const PLAYER_WEAPON_LIFETIME_FOR_THUNDER: f32 = 45. * TIME_1F;
     const ENEMY_WEAPON_LIFETIME: f32 = 60. * TIME_1F;
+    const BOSS_DAMAGE_COOLTIME: f32 = 120. * TIME_1F;
     const GRAVITY: f32 = 9.81;
     const GRAVITY_TIME_STEP: f32 = 0.24; // FPS通りだと重力加速が少ないので経過時間を補正
     const MAP_WIDTH_TILES: u32 = 100;
@@ -57,6 +58,7 @@ pub mod game_scene {
         move_lifetime: usize,
         stop: bool,
         weapon_cooldown: Timer,
+        damage_cooldown: Timer,
         life: i32,
     }
 
@@ -190,8 +192,11 @@ pub mod game_scene {
                         .run_if(in_state(BossState::InActive)),
                 )
                 .add_systems(
-                    Update,
-                    (check_defeat_boss_system)
+                    FixedUpdate,
+                    (
+                        check_cllision_player_weapon_for_boss_system,
+                        check_defeat_boss_system,
+                    )
                         .run_if(in_state(GameState::Game))
                         .run_if(in_state(StageState::Boss))
                         .run_if(in_state(BossState::Active)),
@@ -474,6 +479,7 @@ pub mod game_scene {
                 stop: false,
                 move_lifetime: 30, // TODO
                 weapon_cooldown: Timer::from_seconds(ENEMY_WEAPON_LIFETIME, TimerMode::Once), // TODO
+                damage_cooldown: Timer::from_seconds(BOSS_DAMAGE_COOLTIME, TimerMode::Once), // TODO
             },
         ));
     }
@@ -1131,6 +1137,52 @@ pub mod game_scene {
                             },
                         ));
                     }
+                }
+            }
+        }
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn check_cllision_player_weapon_for_boss_system(
+        mut commands: Commands,
+        mut boss_query: Query<(&mut Boss, &Transform), With<Boss>>,
+        mut player_weapon_query: Query<
+            (Entity, &mut Transform, &mut PlayerWeapon),
+            (With<PlayerWeapon>, Without<Boss>),
+        >,
+        mut collision_events: EventWriter<CollisionEvent>,
+        timer: Res<Time>,
+    ) {
+        let weapon_size = Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE);
+        let boss_size = Vec2::new(BOSS_SIZE, BOSS_SIZE);
+        let (mut boss, boss_transform) = boss_query.single_mut();
+        boss.damage_cooldown.tick(timer.delta());
+
+        for (player_weapon_entity, player_weapon_transform, player_weapon) in
+            &mut player_weapon_query
+        {
+            let collision = collide(
+                player_weapon_transform.translation,
+                weapon_size,
+                boss_transform.translation,
+                boss_size,
+            );
+            if collision.is_some() && boss.damage_cooldown.finished() {
+                collision_events.send_default();
+
+                // ボスの体力を減少させる
+                boss.life -= match player_weapon.kind {
+                    PlayerWeaponKind::Fire | PlayerWeaponKind::Ice => 1,
+                    _ => 2,
+                };
+                // 数秒ダメージを受けない無敵時間になる
+                boss.damage_cooldown.reset();
+
+                // FireとIceなら敵に当たったらdespawnする
+                if player_weapon.kind == PlayerWeaponKind::Fire
+                    || player_weapon.kind == PlayerWeaponKind::Ice
+                {
+                    commands.entity(player_weapon_entity).despawn();
                 }
             }
         }
