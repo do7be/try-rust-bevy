@@ -35,7 +35,7 @@ pub mod loading_scene {
             OnLoadingScreen,
         ));
 
-        commands.insert_resource(LoadingTimer(Timer::from_seconds(1.0, TimerMode::Once)));
+        commands.insert_resource(LoadingTimer(Timer::from_seconds(0.5, TimerMode::Once)));
     }
 
     fn countdown(
