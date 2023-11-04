@@ -4,7 +4,7 @@ use try_rust_bevy::utils::*;
 pub mod ending_scene {
     use bevy::prelude::*;
 
-    use super::{despawn_screen, GameState};
+    use super::{despawn_screen, BossState, GameState, StageState};
 
     pub struct EndingPlugin;
 
@@ -63,6 +63,8 @@ pub mod ending_scene {
         time: Res<Time>,
         mut timer: ResMut<SleepTimer>,
         mut game_state: ResMut<NextState<GameState>>,
+        mut stage_state: ResMut<NextState<StageState>>,
+        mut boss_state: ResMut<NextState<BossState>>,
     ) {
         // タイマーを進める
         timer.tick(time.delta());
@@ -70,8 +72,11 @@ pub mod ending_scene {
         // １秒スリープののち、Zを押したら次のscene imageへ
         if keyboard_input.just_pressed(KeyCode::Z) && timer.finished() {
             if scene_number.number == 14 {
-                // TODO: 残りのStateなど、State全部リセットするようにする
+                // State全部リセットする
                 game_state.set(GameState::Title);
+                stage_state.set(StageState::default());
+                boss_state.set(BossState::default());
+                scene_number.number = 5;
             } else {
                 scene_number.number += 1;
                 timer.reset();
