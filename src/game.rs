@@ -203,6 +203,7 @@ pub mod game_scene {
                 .add_systems(
                     FixedUpdate,
                     (
+                        check_cllision_boss_system,
                         check_cllision_player_weapon_for_boss_system,
                         check_defeat_boss_system,
                         boss_flash_system,
@@ -1188,6 +1189,47 @@ pub mod game_scene {
                     }
                 }
             }
+        }
+    }
+
+    #[allow(clippy::type_complexity)]
+    fn check_cllision_boss_system(
+        mut player_query: Query<
+            (
+                &mut Transform,
+                &mut Player,
+                &mut AnimationIndices,
+                &mut TextureAtlasSprite,
+            ),
+            (With<Player>, Without<Boss>),
+        >,
+        boss_query: Query<&Transform, With<Boss>>,
+        mut collision_events: EventWriter<CollisionEvent>,
+        mut timer: ResMut<DeathTimer>,
+        boss_state: Res<State<BossState>>,
+    ) {
+        let character_size = Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE);
+        let boss_size = Vec2::new(BOSS_SIZE, BOSS_SIZE);
+        let (mut player_transform, mut player, mut player_animation, mut player_texture_atlas) =
+            player_query.single_mut();
+
+        // 自分とボスの接触判定
+        let boss_transform = boss_query.single();
+        let collision = collide(
+            player_transform.translation,
+            character_size,
+            boss_transform.translation,
+            boss_size,
+        );
+        if collision.is_some() && player.live {
+            collision_events.send_default();
+            die(
+                &mut player,
+                &mut player_transform,
+                &mut player_animation,
+                &mut player_texture_atlas,
+                &mut timer,
+            );
         }
     }
 

@@ -3,6 +3,7 @@ use try_rust_bevy::utils::*;
 
 pub mod stage_title_scene {
     use bevy::prelude::*;
+    use try_rust_bevy::consts::BossState;
 
     use super::{despawn_screen, GameState, StageState};
 
@@ -27,6 +28,7 @@ pub mod stage_title_scene {
         mut commands: Commands,
         asset_server: Res<AssetServer>,
         stage_state: Res<State<StageState>>,
+        mut boss_state: ResMut<NextState<BossState>>,
     ) {
         commands.spawn((
             SpriteBundle {
@@ -39,6 +41,9 @@ pub mod stage_title_scene {
             },
             OnStageTitleScreen,
         ));
+
+        // ボスの出現状態は毎回リセットしておく
+        boss_state.set(BossState::InActive);
     }
 
     fn control_keys(
