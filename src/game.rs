@@ -58,10 +58,6 @@ pub mod game_scene {
 
     #[derive(Component)]
     struct Boss {
-        direction: AllDirection,
-        move_lifetime: usize,
-        stop: bool,
-        weapon_cooldown: Timer,
         damage_cooldown: Timer,
         life: i32,
     }
@@ -82,11 +78,15 @@ pub mod game_scene {
     #[derive(Component)]
     struct Enemy {
         kind: EnemyKind,
+    }
+
+    #[derive(Component)]
+    struct EnemyCharacter {
         direction: AllDirection,
         move_lifetime: usize,
-        walk_step: f32,
         stop: bool,
         weapon_cooldown: Timer,
+        walk_step: f32,
     }
 
     #[derive(Clone, PartialEq)]
@@ -485,14 +485,17 @@ pub mod game_scene {
             animation_indices,
             AnimationTimer(Timer::from_seconds(0.33, TimerMode::Repeating)),
             Boss {
-                direction: AllDirection::Right,
                 life: 20,
-                stop: false,
-                move_lifetime: 30, // TODO
-                weapon_cooldown: Timer::from_seconds(ENEMY_WEAPON_LIFETIME, TimerMode::Once), // TODO
                 damage_cooldown: Timer::from_seconds(BOSS_DAMAGE_COOLTIME, TimerMode::Once)
                     .tick(Duration::from_secs_f32(BOSS_DAMAGE_COOLTIME))
                     .clone(), // TODO
+            },
+            EnemyCharacter {
+                direction: AllDirection::Left,
+                stop: false,
+                move_lifetime: 30,          // TODO
+                walk_step: ENEMY_WALK_STEP, // TODO
+                weapon_cooldown: Timer::from_seconds(ENEMY_WEAPON_LIFETIME, TimerMode::Once), // TODO
             },
         ));
 
@@ -584,8 +587,8 @@ pub mod game_scene {
                 animation_indices,
                 AnimationTimer(Timer::from_seconds(0.33, TimerMode::Repeating)),
                 Character,
-                Enemy {
-                    kind,
+                Enemy { kind },
+                EnemyCharacter {
                     direction: AllDirection::Right,
                     move_lifetime,
                     walk_step,
@@ -1443,12 +1446,12 @@ pub mod game_scene {
     #[allow(clippy::type_complexity)]
     #[allow(clippy::too_many_arguments)]
     fn move_enemy_system(
-        player_query: Query<&Transform, (With<Player>, Without<Enemy>)>,
+        player_query: Query<&Transform, (With<Player>, Without<EnemyCharacter>)>,
         mut enemy_query: Query<
-            (&mut Transform, &mut Enemy),
-            (With<Enemy>, Without<Player>, Without<Camera2d>),
+            (&mut Transform, &mut EnemyCharacter, Option<&Enemy>),
+            (With<EnemyCharacter>, Without<Player>, Without<Camera2d>),
         >,
-        wall_query: Query<&Transform, (With<Wall>, Without<Enemy>, Without<Camera2d>)>,
+        wall_query: Query<&Transform, (With<Wall>, Without<EnemyCharacter>, Without<Camera2d>)>,
         camera_query: Query<&Transform, With<Camera2d>>,
         mut collision_events: EventWriter<CollisionEvent>,
         mut commands: Commands,
@@ -1457,56 +1460,57 @@ pub mod game_scene {
         time: Res<Time>,
     ) {
         let camera_transform = camera_query.single();
-        for (mut enemy_transform, mut enemy) in &mut enemy_query {
+        for (mut enemy_transform, mut enemy_charactor, maybe_enemy) in &mut enemy_query {
             // カメラ外の敵は動かさない
             if !is_inner_camera(camera_transform.translation, enemy_transform.translation) {
                 continue;
             }
 
-            if !enemy.weapon_cooldown.finished() {
-                enemy.weapon_cooldown.tick(time.delta());
+            if !enemy_charactor.weapon_cooldown.finished() {
+                enemy_charactor.weapon_cooldown.tick(time.delta());
             }
 
-            enemy.move_lifetime -= 1;
+            enemy_charactor.move_lifetime -= 1;
             // 現在の行動時間（移動）が終了した時
-            if enemy.move_lifetime == 0 {
-                enemy.move_lifetime = 30; // TODO
+            if enemy_charactor.move_lifetime == 0 {
+                enemy_charactor.move_lifetime = 30; // TODO
 
                 // 飛ぶ敵か止まっていたら新たな動作の抽選を始める
                 // それ以外は行動を継続
-                if enemy.kind == EnemyKind::RedDemon || enemy.stop {
-                    enemy.stop = false;
+                let is_red_demon = if let Some(enemy) = maybe_enemy {
+                    enemy.kind == EnemyKind::RedDemon
+                } else {
+                    false
+                };
+                if is_red_demon || enemy_charactor.stop {
+                    enemy_charactor.stop = false;
                     let mut rng = rand::thread_rng();
                     // 飛ぶ敵は4方向移動可能
-                    let random_max = if enemy.kind == EnemyKind::RedDemon {
-                        4
-                    } else {
-                        2
-                    };
+                    let random_max = if is_red_demon { 4 } else { 2 };
                     let random = rng.gen_range(0..=random_max);
 
                     match random {
                         // 0ならどちらかに向いて止まる
                         0 => {
-                            enemy.direction = if rng.gen() {
+                            enemy_charactor.direction = if rng.gen() {
                                 AllDirection::Left
                             } else {
                                 AllDirection::Right
                             };
-                            enemy.stop = true;
+                            enemy_charactor.stop = true;
                         }
                         // 右に向く
-                        1 => enemy.direction = AllDirection::Right,
+                        1 => enemy_charactor.direction = AllDirection::Right,
                         // 左に向く
-                        2 => enemy.direction = AllDirection::Left,
+                        2 => enemy_charactor.direction = AllDirection::Left,
                         // 上を向く(飛ぶ敵のみ)
-                        3 => enemy.direction = AllDirection::Up,
+                        3 => enemy_charactor.direction = AllDirection::Up,
                         // 下を向く(飛ぶ敵のみ)
-                        4 => enemy.direction = AllDirection::Down,
+                        4 => enemy_charactor.direction = AllDirection::Down,
                         // ランダムをmatchに書くために必要
                         _ => { /* nothing to do */ }
                     };
-                    match enemy.direction {
+                    match enemy_charactor.direction {
                         AllDirection::Left => enemy_transform.scale.x = 1.,
                         AllDirection::Right => enemy_transform.scale.x = -1.,
                         _ => {}
@@ -1515,113 +1519,123 @@ pub mod game_scene {
 
                 let player_transform = player_query.single();
 
-                // RedDemonとWizardは止まったら武器を撃つ
-                if enemy.stop
+                // TODO: EnemyとBossで武器を発射するSystemを分ける
+                if let Some(enemy) = maybe_enemy {
+                    // RedDemonとWizardは止まったら武器を撃つ
+                    if enemy_charactor.stop
                     && (enemy.kind == EnemyKind::RedDemon || enemy.kind == EnemyKind::Wizard)
                     // プレイヤーのいる方向にしか撃たない
                     && player_transform.translation.x <= enemy_transform.translation.x * enemy_transform.scale.x
-                    && enemy.weapon_cooldown.finished()
-                {
-                    // 連発できないよう武器が存在する期間のクールダウンタイムを開始する
-                    enemy.weapon_cooldown.reset();
+                    && enemy_charactor.weapon_cooldown.finished()
+                    {
+                        // 連発できないよう武器が存在する期間のクールダウンタイムを開始する
+                        enemy_charactor.weapon_cooldown.reset();
 
-                    let texture_handle = match enemy.kind {
-                        EnemyKind::RedDemon => {
-                            asset_server.load("images/effect/enemy_attack_shockwave.png")
-                        }
-                        EnemyKind::Wizard => {
-                            asset_server.load("images/effect/enemy_attack_wind.png")
-                        }
-                        _ => asset_server.load("images/effect/enemy_attack_wind.png"),
-                    };
-                    let texture_atlas = TextureAtlas::from_grid(
-                        texture_handle,
-                        Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE),
-                        3,
-                        1,
-                        None,
-                        None,
-                    );
-                    let texture_atlas_handle = texture_atlases.add(texture_atlas);
-                    let animation_indices = AnimationIndices { first: 0, last: 2 };
-                    let scale = if enemy_transform.scale.x < 0. {
-                        Vec3::new(1., 1., 0.)
-                    } else {
-                        Vec3::new(-1., 1., 0.)
-                    };
-                    let translation = Vec3::new(
-                        if enemy_transform.scale.x < 0. {
-                            enemy_transform.translation.x + TILE_SIZE
+                        let texture_handle = match enemy.kind {
+                            EnemyKind::RedDemon => {
+                                asset_server.load("images/effect/enemy_attack_shockwave.png")
+                            }
+                            EnemyKind::Wizard => {
+                                asset_server.load("images/effect/enemy_attack_wind.png")
+                            }
+                            _ => asset_server.load("images/effect/enemy_attack_wind.png"),
+                        };
+                        let texture_atlas = TextureAtlas::from_grid(
+                            texture_handle,
+                            Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE),
+                            3,
+                            1,
+                            None,
+                            None,
+                        );
+                        let texture_atlas_handle = texture_atlases.add(texture_atlas);
+                        let animation_indices = AnimationIndices { first: 0, last: 2 };
+                        let scale = if enemy_transform.scale.x < 0. {
+                            Vec3::new(1., 1., 0.)
                         } else {
-                            enemy_transform.translation.x - TILE_SIZE
-                        },
-                        enemy_transform.translation.y,
-                        // 壁よりも手前に表示
-                        1.,
-                    );
+                            Vec3::new(-1., 1., 0.)
+                        };
+                        let translation = Vec3::new(
+                            if enemy_transform.scale.x < 0. {
+                                enemy_transform.translation.x + TILE_SIZE
+                            } else {
+                                enemy_transform.translation.x - TILE_SIZE
+                            },
+                            enemy_transform.translation.y,
+                            // 壁よりも手前に表示
+                            1.,
+                        );
 
-                    commands.spawn((
-                        OnGameScreen,
-                        SpriteSheetBundle {
-                            texture_atlas: texture_atlas_handle,
-                            sprite: TextureAtlasSprite::new(animation_indices.first),
-                            transform: Transform {
-                                translation,
-                                scale,
+                        commands.spawn((
+                            OnGameScreen,
+                            SpriteSheetBundle {
+                                texture_atlas: texture_atlas_handle,
+                                sprite: TextureAtlasSprite::new(animation_indices.first),
+                                transform: Transform {
+                                    translation,
+                                    scale,
+                                    ..default()
+                                },
                                 ..default()
                             },
-                            ..default()
-                        },
-                        animation_indices,
-                        // TODO: 描画フレームは検討の余地あり
-                        AnimationTimer(Timer::from_seconds(TIME_1F * 6., TimerMode::Repeating)),
-                        EnemyWeapon {
-                            kind: match enemy.kind {
-                                EnemyKind::Wizard => EnemyWeaponKind::Wind,
-                                EnemyKind::RedDemon => EnemyWeaponKind::ShockWave,
-                                _ => EnemyWeaponKind::Wind,
-                            },
-                            lifetime: Timer::from_seconds(ENEMY_WEAPON_LIFETIME, TimerMode::Once),
-                            step: match enemy.kind {
-                                EnemyKind::Wizard => Vec2::new(
-                                    // 横移動のみ
-                                    PLAYER_WEAPON_STEP
-                                        * if enemy_transform.scale.x > 0. {
-                                            -1.
-                                        } else {
-                                            1.
-                                        },
-                                    0.,
+                            animation_indices,
+                            // TODO: 描画フレームは検討の余地あり
+                            AnimationTimer(Timer::from_seconds(TIME_1F * 6., TimerMode::Repeating)),
+                            EnemyWeapon {
+                                kind: match enemy.kind {
+                                    EnemyKind::Wizard => EnemyWeaponKind::Wind,
+                                    EnemyKind::RedDemon => EnemyWeaponKind::ShockWave,
+                                    _ => EnemyWeaponKind::Wind,
+                                },
+                                lifetime: Timer::from_seconds(
+                                    ENEMY_WEAPON_LIFETIME,
+                                    TimerMode::Once,
                                 ),
-                                EnemyKind::RedDemon => {
-                                    // レッドデーモンの攻撃はプレイヤーの位置に目掛けて放つ
-                                    // 角度を求める
-                                    let temp = ((player_transform.translation.y - translation.y)
-                                        / (player_transform.translation.x - translation.x))
-                                        .atan();
-                                    let x = (player_transform.translation.x - translation.x) / 50.; //xは50回移動でキャラに到達
-                                    let y = temp.tan() * x;
-                                    Vec2::new(x, y)
-                                }
-                                _ => Vec2::default(),
+                                step: match enemy.kind {
+                                    EnemyKind::Wizard => Vec2::new(
+                                        // 横移動のみ
+                                        PLAYER_WEAPON_STEP
+                                            * if enemy_transform.scale.x > 0. {
+                                                -1.
+                                            } else {
+                                                1.
+                                            },
+                                        0.,
+                                    ),
+                                    EnemyKind::RedDemon => {
+                                        // レッドデーモンの攻撃はプレイヤーの位置に目掛けて放つ
+                                        // 角度を求める
+                                        let temp = ((player_transform.translation.y
+                                            - translation.y)
+                                            / (player_transform.translation.x - translation.x))
+                                            .atan();
+                                        let x =
+                                            (player_transform.translation.x - translation.x) / 50.; //xは50回移動でキャラに到達
+                                        let y = temp.tan() * x;
+                                        Vec2::new(x, y)
+                                    }
+                                    _ => Vec2::default(),
+                                },
                             },
-                        },
-                    ));
+                        ));
+                    }
                 }
             }
 
             // 敵の移動の判定
-            if !enemy.stop {
+            if !enemy_charactor.stop {
                 // 衝突判定を行うために移動先のtranslationを用意
                 let mut next_time_translation = enemy_transform.translation;
-                next_time_translation.x = match enemy.direction {
-                    AllDirection::Left => enemy_transform.translation.x - enemy.walk_step,
-                    AllDirection::Right => enemy_transform.translation.x + enemy.walk_step,
+                next_time_translation.x = match enemy_charactor.direction {
+                    AllDirection::Left => enemy_transform.translation.x - enemy_charactor.walk_step,
+                    AllDirection::Right => {
+                        enemy_transform.translation.x + enemy_charactor.walk_step
+                    }
                     _ => enemy_transform.translation.x,
                 };
-                next_time_translation.y = match enemy.direction {
-                    AllDirection::Up => enemy_transform.translation.y + enemy.walk_step,
-                    AllDirection::Down => enemy_transform.translation.y - enemy.walk_step,
+                next_time_translation.y = match enemy_charactor.direction {
+                    AllDirection::Up => enemy_transform.translation.y + enemy_charactor.walk_step,
+                    AllDirection::Down => enemy_transform.translation.y - enemy_charactor.walk_step,
                     _ => enemy_transform.translation.y,
                 };
                 // 画面外
@@ -1630,7 +1644,7 @@ pub mod game_scene {
                     || next_time_translation.y < 0.
                     || next_time_translation.y > TILE_SIZE * 14.
                 {
-                    enemy.stop = true;
+                    enemy_charactor.stop = true;
                     // 移動中止
                     next_time_translation = enemy_transform.translation;
                 } else {
@@ -1644,7 +1658,7 @@ pub mod game_scene {
                         );
                         if collision.is_some() {
                             collision_events.send_default();
-                            enemy.stop = true;
+                            enemy_charactor.stop = true;
                             // 移動中止
                             next_time_translation = enemy_transform.translation;
                             break;
@@ -1653,38 +1667,44 @@ pub mod game_scene {
                 }
 
                 // 飛ぶ敵以外は進む先に床がなければ停止させる
-                if enemy.kind != EnemyKind::RedDemon {
-                    let mut exist_floor = false;
-                    for wall_transform in &wall_query {
-                        let mut hoge = next_time_translation;
-                        hoge.x = match enemy.direction {
-                            AllDirection::Left => enemy_transform.translation.x - CHARACTER_SIZE,
-                            AllDirection::Right => enemy_transform.translation.x + CHARACTER_SIZE,
-                            _ => enemy_transform.translation.x,
-                        };
-                        hoge.y -= 1.;
-                        let collision = collide(
-                            hoge,
-                            Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE),
-                            wall_transform.translation,
-                            Vec2::new(TILE_SIZE, TILE_SIZE),
-                        );
-                        if collision.is_some() {
-                            collision_events.send_default();
-                            exist_floor = true;
+                if let Some(enemy) = maybe_enemy {
+                    if enemy.kind != EnemyKind::RedDemon {
+                        let mut exist_floor = false;
+                        for wall_transform in &wall_query {
+                            let mut check_floor_position = next_time_translation;
+                            check_floor_position.x = match enemy_charactor.direction {
+                                AllDirection::Left => {
+                                    enemy_transform.translation.x - CHARACTER_SIZE
+                                }
+                                AllDirection::Right => {
+                                    enemy_transform.translation.x + CHARACTER_SIZE
+                                }
+                                _ => enemy_transform.translation.x,
+                            };
+                            check_floor_position.y -= 1.;
+                            let collision = collide(
+                                check_floor_position,
+                                Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE),
+                                wall_transform.translation,
+                                Vec2::new(TILE_SIZE, TILE_SIZE),
+                            );
+                            if collision.is_some() {
+                                collision_events.send_default();
+                                exist_floor = true;
+                            }
                         }
-                    }
-                    if !exist_floor {
-                        enemy.stop = true;
-                        // 移動中止
-                        break;
+                        if !exist_floor {
+                            enemy_charactor.stop = true;
+                            // 移動中止
+                            break;
+                        }
                     }
                 }
 
                 // 移動を反映
                 enemy_transform.translation = next_time_translation;
                 // 向いている方向に画像を向ける
-                match enemy.direction {
+                match enemy_charactor.direction {
                     AllDirection::Left => enemy_transform.scale.x = 1.,
                     AllDirection::Right => enemy_transform.scale.x = -1.,
                     _ => {}
