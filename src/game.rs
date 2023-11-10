@@ -1074,6 +1074,7 @@ pub mod game_scene {
                 &mut player_animation,
                 &mut player_texture_atlas,
                 &mut death_timer,
+                true,
             );
         }
     }
@@ -1113,6 +1114,7 @@ pub mod game_scene {
                     &mut player_animation,
                     &mut player_texture_atlas,
                     &mut timer,
+                    false,
                 );
             }
         }
@@ -1236,6 +1238,7 @@ pub mod game_scene {
                 &mut player_animation,
                 &mut player_texture_atlas,
                 &mut timer,
+                false,
             );
         }
     }
@@ -1419,6 +1422,7 @@ pub mod game_scene {
                     &mut player_animation,
                     &mut player_texture_atlas,
                     &mut death_timer,
+                    false,
                 );
             }
         }
@@ -1916,6 +1920,7 @@ pub mod game_scene {
         animation_indices: &mut AnimationIndices,
         texture_atlas_sprite: &mut TextureAtlasSprite,
         timer: &mut ResMut<DeathTimer>,
+        fall: bool,
     ) {
         player.live = false;
         // デス画像に差し替え
@@ -1924,6 +1929,10 @@ pub mod game_scene {
         transform.scale.x *= -1.; // デス画像は左右逆になっている
         texture_atlas_sprite.index = 4;
         // デスタイマー起動
+        if fall {
+            // 落下時はデスタイマーは短い
+            timer.set_duration(Duration::from_secs_f32(0.5));
+        }
         timer.reset();
     }
 
