@@ -206,6 +206,8 @@ pub mod game_scene {
                         check_cllision_boss_system,
                         check_cllision_player_weapon_for_boss_system,
                         check_defeat_boss_system,
+                        control_boss_system,
+                        turn_around_boss_system,
                         boss_flash_system,
                     )
                         .run_if(in_state(GameState::Game))
@@ -222,7 +224,10 @@ pub mod game_scene {
                         check_collision_enemy_weapon_system,
                         check_collision_player_weapon_limit_item_system,
                         check_player_weapon_limit_status_system,
-                        move_enemy_system,
+                        control_enemy_system,
+                        move_enemy_system
+                            .after(control_enemy_system)
+                            .after(control_boss_system),
                         move_enemy_weapon_system,
                         move_player_weapon_system,
                     )
@@ -1209,7 +1214,6 @@ pub mod game_scene {
         boss_query: Query<&Transform, With<Boss>>,
         mut collision_events: EventWriter<CollisionEvent>,
         mut timer: ResMut<DeathTimer>,
-        boss_state: Res<State<BossState>>,
     ) {
         let character_size = Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE);
         let boss_size = Vec2::new(BOSS_SIZE, BOSS_SIZE);
@@ -1445,22 +1449,154 @@ pub mod game_scene {
 
     #[allow(clippy::type_complexity)]
     #[allow(clippy::too_many_arguments)]
-    fn move_enemy_system(
+    fn turn_around_boss_system(
         player_query: Query<&Transform, (With<Player>, Without<EnemyCharacter>)>,
-        mut enemy_query: Query<
-            (&mut Transform, &mut EnemyCharacter, Option<&Enemy>),
+        mut boss_query: Query<
+            (&mut Transform, &mut EnemyCharacter, &Boss),
             (With<EnemyCharacter>, Without<Player>, Without<Camera2d>),
         >,
-        wall_query: Query<&Transform, (With<Wall>, Without<EnemyCharacter>, Without<Camera2d>)>,
+    ) {
+        let (mut boss_transform, mut enemy_charactor, boss) = boss_query.single_mut();
+        let player_transform = player_query.single();
+
+        if player_transform.translation.x < boss_transform.translation.x {
+            boss_transform.scale.x = 1.;
+        } else {
+            boss_transform.scale.x = -1.;
+        }
+    }
+
+    #[allow(clippy::type_complexity)]
+    #[allow(clippy::too_many_arguments)]
+    fn control_boss_system(
+        player_query: Query<&Transform, (With<Player>, Without<EnemyCharacter>)>,
+        mut boss_query: Query<
+            (&mut Transform, &mut EnemyCharacter, &Boss),
+            (With<EnemyCharacter>, Without<Player>, Without<Camera2d>),
+        >,
+        mut commands: Commands,
+        asset_server: Res<AssetServer>,
+        mut texture_atlases: ResMut<Assets<TextureAtlas>>,
+        time: Res<Time>,
+    ) {
+        let (mut boss_transform, mut enemy_charactor, boss) = boss_query.single_mut();
+        let player_transform = player_query.single();
+
+        if !enemy_charactor.weapon_cooldown.finished() {
+            enemy_charactor.weapon_cooldown.tick(time.delta());
+        }
+
+        enemy_charactor.move_lifetime -= 1;
+        // 現在の行動時間（移動）が終了した時
+        if enemy_charactor.move_lifetime == 0 {
+            enemy_charactor.move_lifetime = 40; // TODO
+
+            // 新たな動作の抽選を始める
+            enemy_charactor.stop = false;
+            let mut rng = rand::thread_rng();
+            let random = rng.gen_range(0..=1);
+
+            match random {
+                // 0なら止まって武器を撃つ
+                0 => {
+                    enemy_charactor.stop = true;
+                    enemy_charactor.direction =
+                        if boss_transform.translation.x >= player_transform.translation.x {
+                            AllDirection::Left
+                        } else {
+                            AllDirection::Right
+                        }
+                }
+                // 向いている方向に歩く
+                1 => { /* nothing to do */ }
+                // ランダムをmatchに書くために必要
+                _ => { /* nothing to do */ }
+            };
+
+            // TODO
+            // 止まったら武器を撃つ
+            if enemy_charactor.stop && enemy_charactor.weapon_cooldown.finished() {
+                // 連発できないよう武器が存在する期間のクールダウンタイムを開始する
+                enemy_charactor.weapon_cooldown.reset();
+
+                let texture_handle = asset_server.load("images/effect/enemy_attack_shockwave.png");
+                let texture_atlas = TextureAtlas::from_grid(
+                    texture_handle,
+                    Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE),
+                    3,
+                    1,
+                    None,
+                    None,
+                );
+                let texture_atlas_handle = texture_atlases.add(texture_atlas);
+                let animation_indices = AnimationIndices { first: 0, last: 2 };
+                let scale = if boss_transform.scale.x < 0. {
+                    Vec3::new(1., 1., 0.)
+                } else {
+                    Vec3::new(-1., 1., 0.)
+                };
+                let translation = Vec3::new(
+                    if boss_transform.scale.x < 0. {
+                        boss_transform.translation.x + TILE_SIZE
+                    } else {
+                        boss_transform.translation.x - TILE_SIZE
+                    },
+                    boss_transform.translation.y,
+                    // 壁よりも手前に表示
+                    1.,
+                );
+
+                commands.spawn((
+                    OnGameScreen,
+                    SpriteSheetBundle {
+                        texture_atlas: texture_atlas_handle,
+                        sprite: TextureAtlasSprite::new(animation_indices.first),
+                        transform: Transform {
+                            translation,
+                            scale,
+                            ..default()
+                        },
+                        ..default()
+                    },
+                    animation_indices,
+                    // TODO: 描画フレームは検討の余地あり
+                    AnimationTimer(Timer::from_seconds(TIME_1F * 6., TimerMode::Repeating)),
+                    EnemyWeapon {
+                        kind: EnemyWeaponKind::ShockWave, // TODO
+                        lifetime: Timer::from_seconds(ENEMY_WEAPON_LIFETIME, TimerMode::Once), // TODO
+                        step: {
+                            // TODO
+                            // レッドデーモンの攻撃はプレイヤーの位置に目掛けて放つ
+                            // 角度を求める
+                            let temp = ((player_transform.translation.y - translation.y)
+                                / (player_transform.translation.x - translation.x))
+                                .atan();
+                            let x = (player_transform.translation.x - translation.x) / 50.; //xは50回移動でキャラに到達
+                            let y = temp.tan() * x;
+                            Vec2::new(x, y)
+                        },
+                    },
+                ));
+            }
+        }
+    }
+
+    #[allow(clippy::type_complexity)]
+    #[allow(clippy::too_many_arguments)]
+    fn control_enemy_system(
+        player_query: Query<&Transform, (With<Player>, Without<EnemyCharacter>)>,
+        mut enemy_query: Query<
+            (&mut Transform, &mut EnemyCharacter, &Enemy),
+            (With<EnemyCharacter>, Without<Player>, Without<Camera2d>),
+        >,
         camera_query: Query<&Transform, With<Camera2d>>,
-        mut collision_events: EventWriter<CollisionEvent>,
         mut commands: Commands,
         asset_server: Res<AssetServer>,
         mut texture_atlases: ResMut<Assets<TextureAtlas>>,
         time: Res<Time>,
     ) {
         let camera_transform = camera_query.single();
-        for (mut enemy_transform, mut enemy_charactor, maybe_enemy) in &mut enemy_query {
+        for (mut enemy_transform, mut enemy_charactor, enemy) in &mut enemy_query {
             // カメラ外の敵は動かさない
             if !is_inner_camera(camera_transform.translation, enemy_transform.translation) {
                 continue;
@@ -1477,16 +1613,15 @@ pub mod game_scene {
 
                 // 飛ぶ敵か止まっていたら新たな動作の抽選を始める
                 // それ以外は行動を継続
-                let is_red_demon = if let Some(enemy) = maybe_enemy {
-                    enemy.kind == EnemyKind::RedDemon
-                } else {
-                    false
-                };
-                if is_red_demon || enemy_charactor.stop {
+                if enemy.kind == EnemyKind::RedDemon || enemy_charactor.stop {
                     enemy_charactor.stop = false;
                     let mut rng = rand::thread_rng();
                     // 飛ぶ敵は4方向移動可能
-                    let random_max = if is_red_demon { 4 } else { 2 };
+                    let random_max = if enemy.kind == EnemyKind::RedDemon {
+                        4
+                    } else {
+                        2
+                    };
                     let random = rng.gen_range(0..=random_max);
 
                     match random {
@@ -1519,107 +1654,125 @@ pub mod game_scene {
 
                 let player_transform = player_query.single();
 
-                // TODO: EnemyとBossで武器を発射するSystemを分ける
-                if let Some(enemy) = maybe_enemy {
-                    // RedDemonとWizardは止まったら武器を撃つ
-                    if enemy_charactor.stop
+                // RedDemonとWizardは止まったら武器を撃つ
+                if enemy_charactor.stop
                     && (enemy.kind == EnemyKind::RedDemon || enemy.kind == EnemyKind::Wizard)
                     // プレイヤーのいる方向にしか撃たない
-                    && player_transform.translation.x <= enemy_transform.translation.x * enemy_transform.scale.x
+                    && player_transform.translation.x >= enemy_transform.translation.x * enemy_transform.scale.x * -1.
                     && enemy_charactor.weapon_cooldown.finished()
-                    {
-                        // 連発できないよう武器が存在する期間のクールダウンタイムを開始する
-                        enemy_charactor.weapon_cooldown.reset();
+                {
+                    // 連発できないよう武器が存在する期間のクールダウンタイムを開始する
+                    enemy_charactor.weapon_cooldown.reset();
 
-                        let texture_handle = match enemy.kind {
-                            EnemyKind::RedDemon => {
-                                asset_server.load("images/effect/enemy_attack_shockwave.png")
-                            }
-                            EnemyKind::Wizard => {
-                                asset_server.load("images/effect/enemy_attack_wind.png")
-                            }
-                            _ => asset_server.load("images/effect/enemy_attack_wind.png"),
-                        };
-                        let texture_atlas = TextureAtlas::from_grid(
-                            texture_handle,
-                            Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE),
-                            3,
-                            1,
-                            None,
-                            None,
-                        );
-                        let texture_atlas_handle = texture_atlases.add(texture_atlas);
-                        let animation_indices = AnimationIndices { first: 0, last: 2 };
-                        let scale = if enemy_transform.scale.x < 0. {
-                            Vec3::new(1., 1., 0.)
+                    let texture_handle = match enemy.kind {
+                        EnemyKind::RedDemon => {
+                            asset_server.load("images/effect/enemy_attack_shockwave.png")
+                        }
+                        EnemyKind::Wizard => {
+                            asset_server.load("images/effect/enemy_attack_wind.png")
+                        }
+                        _ => asset_server.load("images/effect/enemy_attack_wind.png"),
+                    };
+                    let texture_atlas = TextureAtlas::from_grid(
+                        texture_handle,
+                        Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE),
+                        3,
+                        1,
+                        None,
+                        None,
+                    );
+                    let texture_atlas_handle = texture_atlases.add(texture_atlas);
+                    let animation_indices = AnimationIndices { first: 0, last: 2 };
+                    let scale = if enemy_transform.scale.x < 0. {
+                        Vec3::new(1., 1., 0.)
+                    } else {
+                        Vec3::new(-1., 1., 0.)
+                    };
+                    let translation = Vec3::new(
+                        if enemy_transform.scale.x < 0. {
+                            enemy_transform.translation.x + TILE_SIZE
                         } else {
-                            Vec3::new(-1., 1., 0.)
-                        };
-                        let translation = Vec3::new(
-                            if enemy_transform.scale.x < 0. {
-                                enemy_transform.translation.x + TILE_SIZE
-                            } else {
-                                enemy_transform.translation.x - TILE_SIZE
-                            },
-                            enemy_transform.translation.y,
-                            // 壁よりも手前に表示
-                            1.,
-                        );
+                            enemy_transform.translation.x - TILE_SIZE
+                        },
+                        enemy_transform.translation.y,
+                        // 壁よりも手前に表示
+                        1.,
+                    );
 
-                        commands.spawn((
-                            OnGameScreen,
-                            SpriteSheetBundle {
-                                texture_atlas: texture_atlas_handle,
-                                sprite: TextureAtlasSprite::new(animation_indices.first),
-                                transform: Transform {
-                                    translation,
-                                    scale,
-                                    ..default()
-                                },
+                    commands.spawn((
+                        OnGameScreen,
+                        SpriteSheetBundle {
+                            texture_atlas: texture_atlas_handle,
+                            sprite: TextureAtlasSprite::new(animation_indices.first),
+                            transform: Transform {
+                                translation,
+                                scale,
                                 ..default()
                             },
-                            animation_indices,
-                            // TODO: 描画フレームは検討の余地あり
-                            AnimationTimer(Timer::from_seconds(TIME_1F * 6., TimerMode::Repeating)),
-                            EnemyWeapon {
-                                kind: match enemy.kind {
-                                    EnemyKind::Wizard => EnemyWeaponKind::Wind,
-                                    EnemyKind::RedDemon => EnemyWeaponKind::ShockWave,
-                                    _ => EnemyWeaponKind::Wind,
-                                },
-                                lifetime: Timer::from_seconds(
-                                    ENEMY_WEAPON_LIFETIME,
-                                    TimerMode::Once,
-                                ),
-                                step: match enemy.kind {
-                                    EnemyKind::Wizard => Vec2::new(
-                                        // 横移動のみ
-                                        PLAYER_WEAPON_STEP
-                                            * if enemy_transform.scale.x > 0. {
-                                                -1.
-                                            } else {
-                                                1.
-                                            },
-                                        0.,
-                                    ),
-                                    EnemyKind::RedDemon => {
-                                        // レッドデーモンの攻撃はプレイヤーの位置に目掛けて放つ
-                                        // 角度を求める
-                                        let temp = ((player_transform.translation.y
-                                            - translation.y)
-                                            / (player_transform.translation.x - translation.x))
-                                            .atan();
-                                        let x =
-                                            (player_transform.translation.x - translation.x) / 50.; //xは50回移動でキャラに到達
-                                        let y = temp.tan() * x;
-                                        Vec2::new(x, y)
-                                    }
-                                    _ => Vec2::default(),
-                                },
+                            ..default()
+                        },
+                        animation_indices,
+                        // TODO: 描画フレームは検討の余地あり
+                        AnimationTimer(Timer::from_seconds(TIME_1F * 6., TimerMode::Repeating)),
+                        EnemyWeapon {
+                            kind: match enemy.kind {
+                                EnemyKind::Wizard => EnemyWeaponKind::Wind,
+                                EnemyKind::RedDemon => EnemyWeaponKind::ShockWave,
+                                _ => EnemyWeaponKind::Wind,
                             },
-                        ));
-                    }
+                            lifetime: Timer::from_seconds(ENEMY_WEAPON_LIFETIME, TimerMode::Once),
+                            step: match enemy.kind {
+                                EnemyKind::Wizard => Vec2::new(
+                                    // 横移動のみ
+                                    PLAYER_WEAPON_STEP
+                                        * if enemy_transform.scale.x > 0. {
+                                            -1.
+                                        } else {
+                                            1.
+                                        },
+                                    0.,
+                                ),
+                                EnemyKind::RedDemon => {
+                                    // レッドデーモンの攻撃はプレイヤーの位置に目掛けて放つ
+                                    // 角度を求める
+                                    let temp = ((player_transform.translation.y - translation.y)
+                                        / (player_transform.translation.x - translation.x))
+                                        .atan();
+                                    let x = (player_transform.translation.x - translation.x) / 50.; //xは50回移動でキャラに到達
+                                    let y = temp.tan() * x;
+                                    Vec2::new(x, y)
+                                }
+                                _ => Vec2::default(),
+                            },
+                        },
+                    ));
                 }
+            }
+        }
+    }
+
+    #[allow(clippy::type_complexity)]
+    #[allow(clippy::too_many_arguments)]
+    fn move_enemy_system(
+        mut enemy_query: Query<
+            (
+                &mut Transform,
+                &mut EnemyCharacter,
+                Option<&Enemy>,
+                Option<&Boss>,
+            ),
+            (With<EnemyCharacter>, Without<Player>, Without<Camera2d>),
+        >,
+        wall_query: Query<&Transform, (With<Wall>, Without<EnemyCharacter>, Without<Camera2d>)>,
+        camera_query: Query<&Transform, With<Camera2d>>,
+        mut collision_events: EventWriter<CollisionEvent>,
+    ) {
+        let camera_transform = camera_query.single();
+        for (mut enemy_transform, mut enemy_charactor, maybe_enemy, maybe_boss) in &mut enemy_query
+        {
+            // カメラ外の敵は動かさない
+            if !is_inner_camera(camera_transform.translation, enemy_transform.translation) {
+                continue;
             }
 
             // 敵の移動の判定
@@ -1703,12 +1856,6 @@ pub mod game_scene {
 
                 // 移動を反映
                 enemy_transform.translation = next_time_translation;
-                // 向いている方向に画像を向ける
-                match enemy_charactor.direction {
-                    AllDirection::Left => enemy_transform.scale.x = 1.,
-                    AllDirection::Right => enemy_transform.scale.x = -1.,
-                    _ => {}
-                }
             }
         }
     }
