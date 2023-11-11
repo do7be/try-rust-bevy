@@ -76,6 +76,12 @@ pub mod game_scene {
         Meteor,
     }
 
+    #[derive(Component)]
+    struct BossWeapon {
+        kind: BossWeaponKind,
+        dark_thunder_timer: Timer,
+    }
+
     #[derive(PartialEq)]
     enum EnemyKind {
         Slime,
@@ -106,7 +112,6 @@ pub mod game_scene {
 
     #[derive(Component)]
     struct EnemyWeapon {
-        kind: EnemyWeaponKind,
         lifetime: Timer,
         step: Vec2,
     }
@@ -217,6 +222,7 @@ pub mod game_scene {
                         check_defeat_boss_system,
                         control_boss_system,
                         turn_around_boss_system,
+                        move_boss_weapon_system,
                         boss_flash_system,
                     )
                         .run_if(in_state(GameState::Game))
@@ -846,7 +852,7 @@ pub mod game_scene {
             let translation = match weapon_kind {
                 PlayerWeaponKind::Thunder => Vec3::new(
                     transform.translation.x,
-                    TILE_SIZE * 14.,
+                    TILE_SIZE * (MAP_HEIGHT_TILES - 1) as f32,
                     // 壁よりも手前に表示
                     1.,
                 ),
@@ -1437,13 +1443,18 @@ pub mod game_scene {
         }
     }
 
-    // 敵の武器の移動
+    // ザコ敵の武器の移動
     #[allow(clippy::type_complexity)]
     fn move_enemy_weapon_system(
         mut commands: Commands,
         mut enemy_weapon_query: Query<
             (Entity, &mut Transform, &mut EnemyWeapon),
-            (With<EnemyWeapon>, Without<Enemy>, Without<Player>),
+            (
+                With<EnemyWeapon>,
+                Without<BossWeapon>,
+                Without<Enemy>,
+                Without<Player>,
+            ),
         >,
         time: Res<Time>,
     ) {
@@ -1452,6 +1463,66 @@ pub mod game_scene {
         {
             enemy_weapon_transform.translation.x += enemy_weapon.step.x;
             enemy_weapon_transform.translation.y += enemy_weapon.step.y;
+
+            enemy_weapon.lifetime.tick(time.delta());
+            if enemy_weapon.lifetime.finished() {
+                commands.entity(enemy_weapon_entity).despawn();
+            }
+        }
+    }
+
+    // ボスの武器の移動
+    #[allow(clippy::type_complexity)]
+    fn move_boss_weapon_system(
+        mut commands: Commands,
+        mut enemy_weapon_query: Query<
+            (
+                Entity,
+                &mut Transform,
+                &mut EnemyWeapon,
+                &mut BossWeapon,
+                &mut AnimationIndices,
+            ),
+            (
+                With<EnemyWeapon>,
+                With<BossWeapon>,
+                Without<Enemy>,
+                Without<Player>,
+            ),
+        >,
+        time: Res<Time>,
+    ) {
+        for (
+            enemy_weapon_entity,
+            mut enemy_weapon_transform,
+            mut enemy_weapon,
+            mut boss_weapon,
+            mut boss_weapon_animation,
+        ) in &mut enemy_weapon_query
+        {
+            enemy_weapon_transform.translation.x += enemy_weapon.step.x;
+            enemy_weapon_transform.translation.y += enemy_weapon.step.y;
+
+            // TODO: ブルーファイアとウォーターバルーンの挙動は途中で変わるので実装する
+
+            match boss_weapon.kind {
+                BossWeaponKind::DarkThunder => {
+                    // ダークサンダーは最初だけ一瞬止める
+                    boss_weapon.dark_thunder_timer.tick(time.delta());
+                    if boss_weapon.dark_thunder_timer.finished() {
+                        // アニメーション画像を動くものに差し替える
+                        if boss_weapon_animation.first == 0 {
+                            boss_weapon_animation.first = 1;
+                            boss_weapon_animation.last = 2;
+                        }
+                        enemy_weapon_transform.translation.y -= BOSS_WEAPON_STEP + 3.;
+                    }
+                }
+                _ => {
+                    enemy_weapon_transform.translation.x += enemy_weapon.step.x;
+                    enemy_weapon_transform.translation.y += enemy_weapon.step.y;
+                }
+            }
 
             enemy_weapon.lifetime.tick(time.delta());
             if enemy_weapon.lifetime.finished() {
@@ -1563,27 +1634,41 @@ pub mod game_scene {
                     Vec3::new(-1., 1., 0.)
                 };
                 let translations = match kind {
-                    BossWeaponKind::Meteor =>
-                    // Xはランダム
-                    {
-                        [
-                            Vec3::new(
-                                TILE_SIZE * 79. + TILE_SIZE * rng.gen_range(0..=20) as f32,
-                                TILE_SIZE * (MAP_HEIGHT_TILES - 1) as f32,
-                                1.,
-                            ),
-                            Vec3::new(
-                                TILE_SIZE * 79. + TILE_SIZE * rng.gen_range(0..=20) as f32,
-                                TILE_SIZE * (MAP_HEIGHT_TILES - 1) as f32,
-                                1.,
-                            ),
-                            Vec3::new(
-                                TILE_SIZE * 79. + TILE_SIZE * rng.gen_range(0..=20) as f32,
-                                TILE_SIZE * (MAP_HEIGHT_TILES - 1) as f32,
-                                1.,
-                            ),
-                        ]
-                    }
+                    BossWeaponKind::Meteor => [
+                        Vec3::new(
+                            TILE_SIZE * 79. + TILE_SIZE * rng.gen_range(0..=20) as f32,
+                            TILE_SIZE * (MAP_HEIGHT_TILES - 1) as f32,
+                            1.,
+                        ),
+                        Vec3::new(
+                            TILE_SIZE * 79. + TILE_SIZE * rng.gen_range(0..=20) as f32,
+                            TILE_SIZE * (MAP_HEIGHT_TILES - 1) as f32,
+                            1.,
+                        ),
+                        Vec3::new(
+                            TILE_SIZE * 79. + TILE_SIZE * rng.gen_range(0..=20) as f32,
+                            TILE_SIZE * (MAP_HEIGHT_TILES - 1) as f32,
+                            1.,
+                        ),
+                    ],
+                    BossWeaponKind::DarkThunder => [
+                        Vec3::new(
+                            player_transform.translation.x - TILE_SIZE,
+                            TILE_SIZE * (MAP_HEIGHT_TILES - 1) as f32,
+                            1.,
+                        ),
+                        Vec3::new(
+                            player_transform.translation.x,
+                            TILE_SIZE * (MAP_HEIGHT_TILES - 1) as f32,
+                            1.,
+                        ),
+                        Vec3::new(
+                            player_transform.translation.x + TILE_SIZE,
+                            TILE_SIZE * (MAP_HEIGHT_TILES - 1) as f32,
+                            1.,
+                        ),
+                    ],
+
                     _ => [
                         Vec3::new(
                             if boss_transform.scale.x < 0. {
@@ -1635,12 +1720,21 @@ pub mod game_scene {
                         animation_indices,
                         // TODO: 描画フレームは検討の余地あり
                         AnimationTimer(Timer::from_seconds(TIME_1F * 6., TimerMode::Repeating)),
+                        BossWeapon {
+                            kind: kind.clone(),
+                            dark_thunder_timer: Timer::from_seconds(
+                                0.0167 * 5., // 5F
+                                TimerMode::Once,
+                            ),
+                        },
                         EnemyWeapon {
-                            kind: EnemyWeaponKind::ShockWave, // TODO
                             lifetime: Timer::from_seconds(ENEMY_WEAPON_LIFETIME, TimerMode::Once), // TODO
                             step: {
                                 match kind {
                                     BossWeaponKind::Meteor => Vec2::new(0., BOSS_WEAPON_STEP * -8.),
+                                    BossWeaponKind::DarkThunder => {
+                                        Vec2::new(0., BOSS_WEAPON_STEP * -3.)
+                                    }
                                     _ => {
                                         // TODO
                                         // レッドデーモンの攻撃はプレイヤーの位置に目掛けて放つ
@@ -1797,11 +1891,6 @@ pub mod game_scene {
                         // TODO: 描画フレームは検討の余地あり
                         AnimationTimer(Timer::from_seconds(TIME_1F * 6., TimerMode::Repeating)),
                         EnemyWeapon {
-                            kind: match enemy.kind {
-                                EnemyKind::Wizard => EnemyWeaponKind::Wind,
-                                EnemyKind::RedDemon => EnemyWeaponKind::ShockWave,
-                                _ => EnemyWeaponKind::Wind,
-                            },
                             lifetime: Timer::from_seconds(ENEMY_WEAPON_LIFETIME, TimerMode::Once),
                             step: match enemy.kind {
                                 EnemyKind::Wizard => Vec2::new(
