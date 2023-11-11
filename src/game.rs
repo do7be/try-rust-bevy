@@ -21,6 +21,7 @@ pub mod game_scene {
     const PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE: f32 = 30. * TIME_1F;
     const PLAYER_WEAPON_LIFETIME_FOR_THUNDER: f32 = 45. * TIME_1F;
     const ENEMY_WEAPON_LIFETIME: f32 = 60. * TIME_1F;
+    const BOSS_WEAPON_STEP: f32 = 4.;
     const BOSS_DAMAGE_COOLTIME: f32 = 30. * TIME_1F;
     const GRAVITY: f32 = 9.81;
     const GRAVITY_TIME_STEP: f32 = 0.24; // FPS通りだと重力加速が少ないので経過時間を補正
@@ -65,6 +66,14 @@ pub mod game_scene {
     #[derive(Component)]
     struct BossLife {
         index: u8,
+    }
+
+    #[derive(Clone, PartialEq)]
+    enum BossWeaponKind {
+        BlueFire,
+        DarkThunder,
+        WaterBalloon,
+        Meteor,
     }
 
     #[derive(PartialEq)]
@@ -1523,7 +1532,22 @@ pub mod game_scene {
                 // 連発できないよう武器が存在する期間のクールダウンタイムを開始する
                 enemy_charactor.weapon_cooldown.reset();
 
-                let texture_handle = asset_server.load("images/effect/enemy_attack_shockwave.png");
+                let random = rng.gen_range(0..=3);
+                let kind = match random {
+                    0 => BossWeaponKind::BlueFire,
+                    1 => BossWeaponKind::DarkThunder,
+                    2 => BossWeaponKind::WaterBalloon,
+                    3 => BossWeaponKind::Meteor,
+                    _ => BossWeaponKind::BlueFire,
+                };
+
+                let texture_handle = asset_server.load(match kind {
+                    BossWeaponKind::BlueFire => "images/effect/boss_attack_bluefire.png",
+                    BossWeaponKind::DarkThunder => "images/effect/boss_attack_darkthunder.png",
+                    BossWeaponKind::WaterBalloon => "images/effect/boss_attack_waterballoon.png",
+                    BossWeaponKind::Meteor => "images/effect/boss_attack_meteor.png",
+                    _ => "images/effect/boss_attack_bluefire.png",
+                });
                 let texture_atlas = TextureAtlas::from_grid(
                     texture_handle,
                     Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE),
@@ -1533,54 +1557,108 @@ pub mod game_scene {
                     None,
                 );
                 let texture_atlas_handle = texture_atlases.add(texture_atlas);
-                let animation_indices = AnimationIndices { first: 0, last: 2 };
                 let scale = if boss_transform.scale.x < 0. {
                     Vec3::new(1., 1., 0.)
                 } else {
                     Vec3::new(-1., 1., 0.)
                 };
-                let translation = Vec3::new(
-                    if boss_transform.scale.x < 0. {
-                        boss_transform.translation.x + TILE_SIZE
-                    } else {
-                        boss_transform.translation.x - TILE_SIZE
-                    },
-                    boss_transform.translation.y,
-                    // 壁よりも手前に表示
-                    1.,
-                );
+                let translations = match kind {
+                    BossWeaponKind::Meteor =>
+                    // Xはランダム
+                    {
+                        [
+                            Vec3::new(
+                                TILE_SIZE * 79. + TILE_SIZE * rng.gen_range(0..=20) as f32,
+                                TILE_SIZE * (MAP_HEIGHT_TILES - 1) as f32,
+                                1.,
+                            ),
+                            Vec3::new(
+                                TILE_SIZE * 79. + TILE_SIZE * rng.gen_range(0..=20) as f32,
+                                TILE_SIZE * (MAP_HEIGHT_TILES - 1) as f32,
+                                1.,
+                            ),
+                            Vec3::new(
+                                TILE_SIZE * 79. + TILE_SIZE * rng.gen_range(0..=20) as f32,
+                                TILE_SIZE * (MAP_HEIGHT_TILES - 1) as f32,
+                                1.,
+                            ),
+                        ]
+                    }
+                    _ => [
+                        Vec3::new(
+                            if boss_transform.scale.x < 0. {
+                                boss_transform.translation.x + TILE_SIZE
+                            } else {
+                                boss_transform.translation.x - TILE_SIZE
+                            },
+                            boss_transform.translation.y - TILE_SIZE / 2.,
+                            // 壁よりも手前に表示
+                            1.,
+                        ),
+                        Vec3::new(
+                            if boss_transform.scale.x < 0. {
+                                boss_transform.translation.x + TILE_SIZE
+                            } else {
+                                boss_transform.translation.x - TILE_SIZE
+                            },
+                            boss_transform.translation.y - TILE_SIZE / 2.,
+                            // 壁よりも手前に表示
+                            1.,
+                        ),
+                        Vec3::new(
+                            if boss_transform.scale.x < 0. {
+                                boss_transform.translation.x + TILE_SIZE
+                            } else {
+                                boss_transform.translation.x - TILE_SIZE
+                            },
+                            boss_transform.translation.y - TILE_SIZE / 2.,
+                            // 壁よりも手前に表示
+                            1.,
+                        ),
+                    ],
+                };
 
-                commands.spawn((
-                    OnGameScreen,
-                    SpriteSheetBundle {
-                        texture_atlas: texture_atlas_handle,
-                        sprite: TextureAtlasSprite::new(animation_indices.first),
-                        transform: Transform {
-                            translation,
-                            scale,
+                for translation in translations {
+                    let animation_indices = AnimationIndices { first: 0, last: 2 };
+                    commands.spawn((
+                        OnGameScreen,
+                        SpriteSheetBundle {
+                            texture_atlas: texture_atlas_handle.clone(),
+                            sprite: TextureAtlasSprite::new(animation_indices.first),
+                            transform: Transform {
+                                translation,
+                                scale,
+                                ..default()
+                            },
                             ..default()
                         },
-                        ..default()
-                    },
-                    animation_indices,
-                    // TODO: 描画フレームは検討の余地あり
-                    AnimationTimer(Timer::from_seconds(TIME_1F * 6., TimerMode::Repeating)),
-                    EnemyWeapon {
-                        kind: EnemyWeaponKind::ShockWave, // TODO
-                        lifetime: Timer::from_seconds(ENEMY_WEAPON_LIFETIME, TimerMode::Once), // TODO
-                        step: {
-                            // TODO
-                            // レッドデーモンの攻撃はプレイヤーの位置に目掛けて放つ
-                            // 角度を求める
-                            let temp = ((player_transform.translation.y - translation.y)
-                                / (player_transform.translation.x - translation.x))
-                                .atan();
-                            let x = (player_transform.translation.x - translation.x) / 50.; //xは50回移動でキャラに到達
-                            let y = temp.tan() * x;
-                            Vec2::new(x, y)
+                        animation_indices,
+                        // TODO: 描画フレームは検討の余地あり
+                        AnimationTimer(Timer::from_seconds(TIME_1F * 6., TimerMode::Repeating)),
+                        EnemyWeapon {
+                            kind: EnemyWeaponKind::ShockWave, // TODO
+                            lifetime: Timer::from_seconds(ENEMY_WEAPON_LIFETIME, TimerMode::Once), // TODO
+                            step: {
+                                match kind {
+                                    BossWeaponKind::Meteor => Vec2::new(0., BOSS_WEAPON_STEP * -8.),
+                                    _ => {
+                                        // TODO
+                                        // レッドデーモンの攻撃はプレイヤーの位置に目掛けて放つ
+                                        // 角度を求める
+                                        let temp = ((player_transform.translation.y
+                                            - translation.y)
+                                            / (player_transform.translation.x - translation.x))
+                                            .atan();
+                                        let x =
+                                            (player_transform.translation.x - translation.x) / 50.; //xは50回移動でキャラに到達
+                                        let y = temp.tan() * x;
+                                        Vec2::new(x, y)
+                                    }
+                                }
+                            },
                         },
-                    },
-                ));
+                    ));
+                }
             }
         }
     }
