@@ -21,14 +21,17 @@ pub mod game_scene {
     const PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE: f32 = 30. * TIME_1F;
     const PLAYER_WEAPON_LIFETIME_FOR_THUNDER: f32 = 45. * TIME_1F;
     const ENEMY_WEAPON_LIFETIME: f32 = 60. * TIME_1F;
+    const ENEMY_WALK_STEP: f32 = 1.;
+    const ENEMY_RIZZARD_WALK_STEP: f32 = 4.;
     const BOSS_WEAPON_STEP: f32 = 4.;
+    const BOSS_WEAPON_LIFETIME: f32 = 90. * TIME_1F;
     const BOSS_DAMAGE_COOLTIME: f32 = 30. * TIME_1F;
+    const BOSS_WALK_STEP: f32 = 2.;
+    const BOSS_MOVE_LIFETIME: usize = 40;
     const GRAVITY: f32 = 9.81;
     const GRAVITY_TIME_STEP: f32 = 0.24; // FPS通りだと重力加速が少ないので経過時間を補正
     const MAP_WIDTH_TILES: u32 = 100;
     const MAP_HEIGHT_TILES: u32 = 15;
-    const ENEMY_WALK_STEP: f32 = 1.;
-    const ENEMY_RIZZARD_WALK_STEP: f32 = 4.;
 
     #[derive(Component)]
     struct OnGameScreen;
@@ -80,6 +83,7 @@ pub mod game_scene {
     struct BossWeapon {
         kind: BossWeaponKind,
         dark_thunder_timer: Timer,
+        index: usize,
     }
 
     #[derive(PartialEq)]
@@ -513,9 +517,9 @@ pub mod game_scene {
             EnemyCharacter {
                 direction: AllDirection::Left,
                 stop: false,
-                move_lifetime: 30,          // TODO
-                walk_step: ENEMY_WALK_STEP, // TODO
-                weapon_cooldown: Timer::from_seconds(ENEMY_WEAPON_LIFETIME, TimerMode::Once), // TODO
+                move_lifetime: BOSS_MOVE_LIFETIME,
+                walk_step: BOSS_WALK_STEP,
+                weapon_cooldown: Timer::from_seconds(BOSS_WEAPON_LIFETIME, TimerMode::Once), // TODO
             },
         ));
 
@@ -1500,12 +1504,34 @@ pub mod game_scene {
             mut boss_weapon_animation,
         ) in &mut enemy_weapon_query
         {
-            enemy_weapon_transform.translation.x += enemy_weapon.step.x;
-            enemy_weapon_transform.translation.y += enemy_weapon.step.y;
-
             // TODO: ブルーファイアとウォーターバルーンの挙動は途中で変わるので実装する
 
             match boss_weapon.kind {
+                BossWeaponKind::WaterBalloon => {
+                    // 2発目は10F,3発目は20F経過したら動く
+                    if enemy_weapon.lifetime.elapsed_secs()
+                        > TIME_1F * 10. * boss_weapon.index as f32
+                    {
+                        enemy_weapon_transform.translation.x += enemy_weapon.step.x;
+                    }
+                }
+                BossWeaponKind::BlueFire => {
+                    // 20F経過したら3方向に分かれる
+                    if enemy_weapon.lifetime.elapsed_secs() > TIME_1F * 20. {
+                        match boss_weapon.index {
+                            1 => {
+                                enemy_weapon.step.y = BOSS_WEAPON_STEP;
+                            }
+                            2 => {
+                                enemy_weapon.step.x = 0.;
+                                enemy_weapon.step.y = BOSS_WEAPON_STEP;
+                            }
+                            _ => {}
+                        }
+                    }
+                    enemy_weapon_transform.translation.x += enemy_weapon.step.x;
+                    enemy_weapon_transform.translation.y += enemy_weapon.step.y;
+                }
                 BossWeaponKind::DarkThunder => {
                     // ダークサンダーは最初だけ一瞬止める
                     boss_weapon.dark_thunder_timer.tick(time.delta());
@@ -1515,7 +1541,7 @@ pub mod game_scene {
                             boss_weapon_animation.first = 1;
                             boss_weapon_animation.last = 2;
                         }
-                        enemy_weapon_transform.translation.y -= BOSS_WEAPON_STEP + 3.;
+                        enemy_weapon_transform.translation.y -= BOSS_WEAPON_STEP * 3.;
                     }
                 }
                 _ => {
@@ -1677,8 +1703,7 @@ pub mod game_scene {
                                 boss_transform.translation.x - TILE_SIZE
                             },
                             boss_transform.translation.y - TILE_SIZE / 2.,
-                            // 壁よりも手前に表示
-                            1.,
+                            2.,
                         ),
                         Vec3::new(
                             if boss_transform.scale.x < 0. {
@@ -1687,8 +1712,7 @@ pub mod game_scene {
                                 boss_transform.translation.x - TILE_SIZE
                             },
                             boss_transform.translation.y - TILE_SIZE / 2.,
-                            // 壁よりも手前に表示
-                            1.,
+                            2.,
                         ),
                         Vec3::new(
                             if boss_transform.scale.x < 0. {
@@ -1697,13 +1721,12 @@ pub mod game_scene {
                                 boss_transform.translation.x - TILE_SIZE
                             },
                             boss_transform.translation.y - TILE_SIZE / 2.,
-                            // 壁よりも手前に表示
-                            1.,
+                            2.,
                         ),
                     ],
                 };
 
-                for translation in translations {
+                for (index, translation) in translations.iter().enumerate() {
                     let animation_indices = AnimationIndices { first: 0, last: 2 };
                     commands.spawn((
                         OnGameScreen,
@@ -1711,7 +1734,7 @@ pub mod game_scene {
                             texture_atlas: texture_atlas_handle.clone(),
                             sprite: TextureAtlasSprite::new(animation_indices.first),
                             transform: Transform {
-                                translation,
+                                translation: *translation,
                                 scale,
                                 ..default()
                             },
@@ -1726,28 +1749,20 @@ pub mod game_scene {
                                 0.0167 * 5., // 5F
                                 TimerMode::Once,
                             ),
+                            index,
                         },
                         EnemyWeapon {
-                            lifetime: Timer::from_seconds(ENEMY_WEAPON_LIFETIME, TimerMode::Once), // TODO
+                            lifetime: Timer::from_seconds(BOSS_WEAPON_LIFETIME, TimerMode::Once),
                             step: {
                                 match kind {
-                                    BossWeaponKind::Meteor => Vec2::new(0., BOSS_WEAPON_STEP * -8.),
+                                    BossWeaponKind::Meteor => Vec2::new(0., BOSS_WEAPON_STEP * -4.),
                                     BossWeaponKind::DarkThunder => {
                                         Vec2::new(0., BOSS_WEAPON_STEP * -3.)
                                     }
-                                    _ => {
-                                        // TODO
-                                        // レッドデーモンの攻撃はプレイヤーの位置に目掛けて放つ
-                                        // 角度を求める
-                                        let temp = ((player_transform.translation.y
-                                            - translation.y)
-                                            / (player_transform.translation.x - translation.x))
-                                            .atan();
-                                        let x =
-                                            (player_transform.translation.x - translation.x) / 50.; //xは50回移動でキャラに到達
-                                        let y = temp.tan() * x;
-                                        Vec2::new(x, y)
-                                    }
+                                    _ => Vec2::new(
+                                        BOSS_WEAPON_STEP * boss_transform.scale.x * -1.,
+                                        0.,
+                                    ),
                                 }
                             },
                         },
