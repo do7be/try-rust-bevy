@@ -47,6 +47,8 @@ jobs:
           git config --global user.name ${{ secrets.USER_NAME }}
           git fetch
           git switch gh-pages
+          mv tmp/game.js target/game.js
+          mv tmp/game_bg.wasm target/game_bg.wasm
           git add target/game.js
           git add target/game_bg.wasm
           git commit -m "build"
