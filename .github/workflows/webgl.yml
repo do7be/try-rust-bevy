@@ -38,7 +38,8 @@ jobs:
         run: |
           git config --global user.email ${{ secrets.USER_EMAIL }}
           git config --global user.name ${{ secrets.USER_NAME }}
-          git checkout gh-pages
+          git fetch
+          git switch gh-pages
           git add target/game.js
           git add target/game_bg.wasm
           git commit -m "build"
