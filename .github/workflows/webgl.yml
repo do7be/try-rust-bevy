@@ -61,4 +61,4 @@ jobs:
           git add assets/js/game.js
           git add assets/js/game_bg.wasm
           git commit -m "build"
-          git push -f origin main:gh-pages
+          git push -f origin gh-pages
