@@ -39,14 +39,14 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v2
-
-      - name: Deploy to GitHub Pages
         run: |
-
           git config --global user.email ${{ secrets.USER_EMAIL }}
           git config --global user.name ${{ secrets.USER_NAME }}
           git fetch
           git switch gh-pages
+
+      - name: Deploy to GitHub Pages
+        run: |
           mv tmp/game.js target/game.js
           mv tmp/game_bg.wasm target/game_bg.wasm
           git add target/game.js
