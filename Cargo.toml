@@ -7,7 +7,8 @@ edition = "2021"
 
 # WebGLへビルドする際はdynamic_linkingを外す
 [dependencies]
-bevy = { version = "0.11.2", features = ["dynamic_linking"] }
+#bevy = { version = "0.11.2", features = ["dynamic_linking"] }
+bevy = { version = "0.11.2" }
 rand = "0.8.5"
 
 # Enable a small amount of optimization in debug mode
