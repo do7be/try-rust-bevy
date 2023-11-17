@@ -56,6 +56,7 @@ jobs:
 
       - name: Deploy to GitHub Pages
         run: |
+          mkdir assets/js
           mv game.js assets/js/game.js
           mv game_bg.wasm assets/js/game_bg.wasm
           git add assets/js/game.js
