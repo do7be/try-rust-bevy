@@ -29,8 +29,8 @@ jobs:
       - name: Move Files
         run: |
           mkdir tmp
-          mv target/game.js tmp/game.js
-          mv target/game_bg.wasm tmp/game_bg.wasm
+          mv target/game.js game.js
+          mv target/game_bg.wasm game_bg.wasm
 
   deploy:
     runs-on: ubuntu-latest
@@ -47,8 +47,8 @@ jobs:
           git config --global user.name ${{ secrets.USER_NAME }}
           git fetch
           git switch gh-pages
-          mv tmp/game.js target/game.js
-          mv tmp/game_bg.wasm target/game_bg.wasm
+          mv ../game.js target/game.js
+          mv ../game_bg.wasm target/game_bg.wasm
           git add target/game.js
           git add target/game_bg.wasm
           git commit -m "build"
