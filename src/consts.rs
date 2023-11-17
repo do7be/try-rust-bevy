@@ -12,9 +12,9 @@ pub enum GameState {
 
 #[derive(Clone, Copy, Default, Eq, PartialEq, Debug, Hash, States)]
 pub enum StageState {
+    #[default]
     Stage1,
     Stage2,
-    #[default]
     Boss,
 }
 
