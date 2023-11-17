@@ -26,6 +26,12 @@ jobs:
             --out-dir target \
             --target web target/wasm32-unknown-unknown/release/try-rust-bevy.wasm
 
+      - name: Move Files
+        run: |
+          mkdir tmp
+          mv target/game.js tmp/game.js
+          mv target/game_bg.wasm tmp/game_bg.wasm
+
   deploy:
     runs-on: ubuntu-latest
     needs: build
@@ -36,6 +42,7 @@ jobs:
 
       - name: Deploy to GitHub Pages
         run: |
+
           git config --global user.email ${{ secrets.USER_EMAIL }}
           git config --global user.name ${{ secrets.USER_NAME }}
           git fetch
