@@ -914,7 +914,9 @@ pub mod game_scene {
 
         for gamepad in gamepads.iter() {
             // Jump
-            if button_inputs.just_pressed(GamepadButton::new(gamepad, GamepadButtonType::South)) {
+            if player.grounded
+                && button_inputs.just_pressed(GamepadButton::new(gamepad, GamepadButtonType::South))
+            {
                 trigger_player_action_jump(&mut player, &mut transform, &mut velocity);
             }
 
