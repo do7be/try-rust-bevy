@@ -913,6 +913,20 @@ pub mod game_scene {
         }
 
         for gamepad in gamepads.iter() {
+            // Walk
+            let left_stick_x = button_axes
+                .get(GamepadAxis::new(gamepad, GamepadAxisType::))
+                .unwrap();
+            if left_stick_x < 0. || button_inputs.just_pressed(GamepadButton::new(gamepad, GamepadButtonType::DPadLeft)) {
+                transform.scale.x = -1.0;
+                player.direction = Direction::Left;
+                player.walk = true;
+            } else if left_stick_x > 0. || button_inputs.just_pressed(GamepadButton::new(gamepad, GamepadButtonType::DPadRight)) {
+                transform.scale.x = 1.0;
+                player.direction = Direction::Right;
+                player.walk = true;
+            }
+
             // Jump
             if player.grounded
                 && button_inputs.just_pressed(GamepadButton::new(gamepad, GamepadButtonType::South))
