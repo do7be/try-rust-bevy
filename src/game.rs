@@ -2007,7 +2007,7 @@ pub mod game_scene {
 
                 // 飛ぶ敵以外は進む先に床がなければ停止させる
                 if let Some(enemy) = maybe_enemy {
-                    if enemy.kind != EnemyKind::RedDemon {
+                    if enemy.kind != EnemyKind::RedDemon && maybe_boss.is_none() {
                         let mut exist_floor = false;
                         for wall_transform in &wall_query {
                             let mut check_floor_position = next_time_translation;
