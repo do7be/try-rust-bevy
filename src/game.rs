@@ -898,7 +898,7 @@ pub mod game_scene {
     fn control_player_system_for_gamepad(
         gamepads: Res<Gamepads>,
         button_inputs: Res<Input<GamepadButton>>,
-        button_axes: Res<Axis<GamepadButton>>,
+        axes: Res<Axis<GamepadAxis>>,
         mut query: Query<(&mut Player, &mut Transform, &mut Velocity), With<Player>>,
         weapon_query: Query<&PlayerWeapon>,
         mut thunder_timer: ResMut<ThunderStopTimer>,
@@ -914,14 +914,21 @@ pub mod game_scene {
 
         for gamepad in gamepads.iter() {
             // Walk
-            let left_stick_x = button_axes
-                .get(GamepadAxis::new(gamepad, GamepadAxisType::))
+            let left_stick_x = axes
+                .get(GamepadAxis::new(gamepad, GamepadAxisType::LeftStickX))
                 .unwrap();
-            if left_stick_x < 0. || button_inputs.just_pressed(GamepadButton::new(gamepad, GamepadButtonType::DPadLeft)) {
+
+            if left_stick_x < 0.
+                || button_inputs
+                    .just_pressed(GamepadButton::new(gamepad, GamepadButtonType::DPadLeft))
+            {
                 transform.scale.x = -1.0;
                 player.direction = Direction::Left;
                 player.walk = true;
-            } else if left_stick_x > 0. || button_inputs.just_pressed(GamepadButton::new(gamepad, GamepadButtonType::DPadRight)) {
+            } else if left_stick_x > 0.
+                || button_inputs
+                    .just_pressed(GamepadButton::new(gamepad, GamepadButtonType::DPadRight))
+            {
                 transform.scale.x = 1.0;
                 player.direction = Direction::Right;
                 player.walk = true;
