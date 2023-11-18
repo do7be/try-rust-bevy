@@ -28,7 +28,7 @@ pub mod initial_load_scene {
 
     fn loading_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         // WebGL用のビルドでない場合は初期ロードがいらないので飛ばす
-        if std::env::var("WASM_BUILD").is_err() {
+        if option_env!("WASM_BUILD").is_none() {
             commands.insert_resource(LoadingTimer(Timer::from_seconds(0., TimerMode::Once)));
             return;
         }
