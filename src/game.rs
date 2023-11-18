@@ -706,11 +706,13 @@ pub mod game_scene {
     }
 
     fn check_stage2_appear_boss_system(
+        mut stage_state: ResMut<NextState<StageState>>,
         mut boss_state: ResMut<NextState<BossState>>,
         mut query: Query<&Transform, With<Player>>,
     ) {
         let transform = query.single_mut();
         if transform.translation.x > TILE_SIZE * (MAP_WIDTH_TILES - 11) as f32 {
+            stage_state.set(StageState::Boss);
             boss_state.set(BossState::Active);
         }
     }
@@ -2007,7 +2009,7 @@ pub mod game_scene {
 
                 // 飛ぶ敵以外は進む先に床がなければ停止させる
                 if let Some(enemy) = maybe_enemy {
-                    if enemy.kind != EnemyKind::RedDemon && maybe_boss.is_none() {
+                    if enemy.kind != EnemyKind::RedDemon {
                         let mut exist_floor = false;
                         for wall_transform in &wall_query {
                             let mut check_floor_position = next_time_translation;
