@@ -237,7 +237,10 @@ pub mod game_scene {
                     FixedUpdate,
                     (
                         control_player_system,
-                        check_collision_wall_system.after(control_player_system),
+                        control_player_system_for_gamepad,
+                        check_collision_wall_system
+                            .after(control_player_system)
+                            .after(control_player_system_for_gamepad),
                         check_collision_enemy_system,
                         check_collision_player_weapon_system,
                         check_collision_enemy_weapon_system,
@@ -763,6 +766,42 @@ pub mod game_scene {
         }
     }
 
+    fn trigger_player_action_jump(
+        player: &mut Player,
+        transform: &mut Transform,
+        velocity: &mut Velocity,
+    ) {
+        player.grounded = false;
+        velocity.y = PLAYER_JUMP_FORCE;
+        player.jump_status.jump = true;
+        player.jump_status.jump_start_y = transform.translation.y;
+        player.jump_status.fall_time = 0.;
+    }
+
+    fn control_player_system_for_gamepad(
+        gamepads: Res<Gamepads>,
+        button_inputs: Res<Input<GamepadButton>>,
+        button_axes: Res<Axis<GamepadButton>>,
+        mut query: Query<(&mut Player, &mut Transform, &mut Velocity), With<Player>>,
+        weapon_query: Query<&PlayerWeapon>,
+        mut thunder_timer: ResMut<ThunderStopTimer>,
+        asset_server: Res<AssetServer>,
+        mut texture_atlases: ResMut<Assets<TextureAtlas>>,
+        mut commands: Commands,
+    ) {
+        let (mut player, mut transform, mut velocity) = query.single_mut();
+        // デス中は何も受け付けない
+        if !player.live {
+            return;
+        }
+
+        for gamepad in gamepads.iter() {
+            if button_inputs.just_pressed(GamepadButton::new(gamepad, GamepadButtonType::South)) {
+                trigger_player_action_jump(&mut player, &mut transform, &mut velocity);
+            }
+        }
+    }
+
     fn control_player_system(
         keyboard_input: Res<Input<KeyCode>>,
         mut query: Query<(&mut Player, &mut Transform, &mut Velocity), With<Player>>,
@@ -792,11 +831,7 @@ pub mod game_scene {
 
         // Jump
         if player.grounded && keyboard_input.just_pressed(KeyCode::X) {
-            player.grounded = false;
-            velocity.y = PLAYER_JUMP_FORCE;
-            player.jump_status.jump = true;
-            player.jump_status.jump_start_y = transform.translation.y;
-            player.jump_status.fall_time = 0.;
+            trigger_player_action_jump(&mut player, &mut transform, &mut velocity);
         }
 
         // Weapon
