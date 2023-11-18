@@ -59,7 +59,7 @@ pub mod stage_title_scene {
             }
         }
         if pressed {
-            game_state.set(GameState::Loading);
+            game_state.set(GameState::Game);
         }
     }
 }
