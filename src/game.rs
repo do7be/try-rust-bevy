@@ -919,15 +919,13 @@ pub mod game_scene {
                 .unwrap();
 
             if left_stick_x < 0.
-                || button_inputs
-                    .just_pressed(GamepadButton::new(gamepad, GamepadButtonType::DPadLeft))
+                || button_inputs.pressed(GamepadButton::new(gamepad, GamepadButtonType::DPadLeft))
             {
                 transform.scale.x = -1.0;
                 player.direction = Direction::Left;
                 player.walk = true;
             } else if left_stick_x > 0.
-                || button_inputs
-                    .just_pressed(GamepadButton::new(gamepad, GamepadButtonType::DPadRight))
+                || button_inputs.pressed(GamepadButton::new(gamepad, GamepadButtonType::DPadRight))
             {
                 transform.scale.x = 1.0;
                 player.direction = Direction::Right;
