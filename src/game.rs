@@ -778,6 +778,123 @@ pub mod game_scene {
         player.jump_status.fall_time = 0.;
     }
 
+    fn trigger_player_action_weapon(
+        weapon_kind: PlayerWeaponKind,
+        player: &mut Player,
+        transform: &mut Transform,
+        weapon_query: &Query<&PlayerWeapon>,
+        mut thunder_timer: &mut ResMut<ThunderStopTimer>,
+        asset_server: &Res<AssetServer>,
+        mut texture_atlases: &mut ResMut<Assets<TextureAtlas>>,
+        mut commands: &mut Commands,
+    ) {
+        if weapon_query.iter().any(|weapon| weapon.kind == weapon_kind) {
+            // すでに同じ武器を出しているなら何もしない
+            return;
+        }
+
+        // 使用可能回数がもう0なら撃てない
+        let limit = match weapon_kind {
+            PlayerWeaponKind::Fire => player.weapon_limit.fire,
+            PlayerWeaponKind::Ice => player.weapon_limit.ice,
+            PlayerWeaponKind::Thunder => player.weapon_limit.thunder,
+            _ => 1,
+        };
+        if limit == 0 {
+            return;
+        }
+
+        let texture_handle = match weapon_kind {
+            PlayerWeaponKind::Fire => asset_server.load("images/effect/fire.png"),
+            PlayerWeaponKind::Ice => asset_server.load("images/effect/ice.png"),
+            PlayerWeaponKind::Thunder => asset_server.load("images/effect/thunder.png"),
+            PlayerWeaponKind::Sword => asset_server.load("images/effect/sword.png"),
+        };
+        let texture_atlas = TextureAtlas::from_grid(
+            texture_handle,
+            Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE),
+            3,
+            1,
+            None,
+            None,
+        );
+        let texture_atlas_handle = texture_atlases.add(texture_atlas);
+        let animation_indices = AnimationIndices {
+            first: 0,
+            last: if weapon_kind == PlayerWeaponKind::Thunder {
+                0
+            } else {
+                2
+            },
+        };
+        let scale = match player.direction {
+            Direction::Right => Vec3::new(1., 1., 0.),
+            Direction::Left => Vec3::new(-1., 1., 0.),
+        };
+        let translation = match weapon_kind {
+            PlayerWeaponKind::Thunder => Vec3::new(
+                transform.translation.x,
+                TILE_SIZE * (MAP_HEIGHT_TILES - 1) as f32,
+                // 壁よりも手前に表示
+                1.,
+            ),
+            _ => Vec3::new(
+                match player.direction {
+                    Direction::Right => transform.translation.x + TILE_SIZE,
+                    Direction::Left => transform.translation.x - TILE_SIZE,
+                },
+                transform.translation.y,
+                // 壁よりも手前に表示
+                1.,
+            ),
+        };
+
+        commands.spawn((
+            OnGameScreen,
+            SpriteSheetBundle {
+                texture_atlas: texture_atlas_handle,
+                sprite: TextureAtlasSprite::new(animation_indices.first),
+                transform: Transform {
+                    translation,
+                    scale,
+                    ..default()
+                },
+                ..default()
+            },
+            animation_indices,
+            // TODO: 描画フレームは検討の余地あり
+            AnimationTimer(Timer::from_seconds(TIME_1F * 6., TimerMode::Repeating)),
+            PlayerWeapon {
+                kind: weapon_kind.clone(),
+                lifetime: Timer::from_seconds(
+                    match weapon_kind {
+                        PlayerWeaponKind::Fire | PlayerWeaponKind::Ice => {
+                            PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE
+                        }
+                        PlayerWeaponKind::Thunder => PLAYER_WEAPON_LIFETIME_FOR_THUNDER,
+                        PlayerWeaponKind::Sword => PLAYER_WEAPON_LIFETIME_FOR_SWORD,
+                    },
+                    TimerMode::Once,
+                ),
+            },
+        ));
+
+        // 使用したら回数を1減らす
+        match weapon_kind {
+            PlayerWeaponKind::Fire => player.weapon_limit.fire -= 1,
+            PlayerWeaponKind::Ice => player.weapon_limit.ice -= 1,
+            PlayerWeaponKind::Thunder => player.weapon_limit.thunder -= 1,
+            _ => {}
+        };
+
+        // サンダーは最初だけ一瞬止めるのでタイマーをセット
+        if weapon_kind == PlayerWeaponKind::Thunder {
+            thunder_timer.reset();
+        }
+    }
+
+    #[allow(clippy::type_complexity)]
+    #[allow(clippy::too_many_arguments)]
     fn control_player_system_for_gamepad(
         gamepads: Res<Gamepads>,
         button_inputs: Res<Input<GamepadButton>>,
@@ -796,8 +913,42 @@ pub mod game_scene {
         }
 
         for gamepad in gamepads.iter() {
+            // Jump
             if button_inputs.just_pressed(GamepadButton::new(gamepad, GamepadButtonType::South)) {
                 trigger_player_action_jump(&mut player, &mut transform, &mut velocity);
+            }
+
+            // Weapon
+            let weapon_kind = if button_inputs
+                .just_pressed(GamepadButton::new(gamepad, GamepadButtonType::RightTrigger))
+            {
+                Some(PlayerWeaponKind::Fire)
+            } else if button_inputs
+                .just_pressed(GamepadButton::new(gamepad, GamepadButtonType::North))
+            {
+                Some(PlayerWeaponKind::Ice)
+            } else if button_inputs
+                .just_pressed(GamepadButton::new(gamepad, GamepadButtonType::East))
+            {
+                Some(PlayerWeaponKind::Thunder)
+            } else if button_inputs
+                .just_pressed(GamepadButton::new(gamepad, GamepadButtonType::West))
+            {
+                Some(PlayerWeaponKind::Sword)
+            } else {
+                None
+            };
+            if let Some(weapon_kind) = weapon_kind {
+                trigger_player_action_weapon(
+                    weapon_kind,
+                    &mut player,
+                    &mut transform,
+                    &weapon_query,
+                    &mut thunder_timer,
+                    &asset_server,
+                    &mut texture_atlases,
+                    &mut commands,
+                );
             }
         }
     }
@@ -847,109 +998,16 @@ pub mod game_scene {
             None
         };
         if let Some(weapon_kind) = weapon_kind {
-            if weapon_query.iter().any(|weapon| weapon.kind == weapon_kind) {
-                // すでに同じ武器を出しているなら何もしない
-                return;
-            }
-
-            // 使用可能回数がもう0なら撃てない
-            let limit = match weapon_kind {
-                PlayerWeaponKind::Fire => player.weapon_limit.fire,
-                PlayerWeaponKind::Ice => player.weapon_limit.ice,
-                PlayerWeaponKind::Thunder => player.weapon_limit.thunder,
-                _ => 1,
-            };
-            if limit == 0 {
-                return;
-            }
-
-            let texture_handle = match weapon_kind {
-                PlayerWeaponKind::Fire => asset_server.load("images/effect/fire.png"),
-                PlayerWeaponKind::Ice => asset_server.load("images/effect/ice.png"),
-                PlayerWeaponKind::Thunder => asset_server.load("images/effect/thunder.png"),
-                PlayerWeaponKind::Sword => asset_server.load("images/effect/sword.png"),
-            };
-            let texture_atlas = TextureAtlas::from_grid(
-                texture_handle,
-                Vec2::new(CHARACTER_SIZE, CHARACTER_SIZE),
-                3,
-                1,
-                None,
-                None,
+            trigger_player_action_weapon(
+                weapon_kind,
+                &mut player,
+                &mut transform,
+                &weapon_query,
+                &mut thunder_timer,
+                &asset_server,
+                &mut texture_atlases,
+                &mut commands,
             );
-            let texture_atlas_handle = texture_atlases.add(texture_atlas);
-            let animation_indices = AnimationIndices {
-                first: 0,
-                last: if weapon_kind == PlayerWeaponKind::Thunder {
-                    0
-                } else {
-                    2
-                },
-            };
-            let scale = match player.direction {
-                Direction::Right => Vec3::new(1., 1., 0.),
-                Direction::Left => Vec3::new(-1., 1., 0.),
-            };
-            let translation = match weapon_kind {
-                PlayerWeaponKind::Thunder => Vec3::new(
-                    transform.translation.x,
-                    TILE_SIZE * (MAP_HEIGHT_TILES - 1) as f32,
-                    // 壁よりも手前に表示
-                    1.,
-                ),
-                _ => Vec3::new(
-                    match player.direction {
-                        Direction::Right => transform.translation.x + TILE_SIZE,
-                        Direction::Left => transform.translation.x - TILE_SIZE,
-                    },
-                    transform.translation.y,
-                    // 壁よりも手前に表示
-                    1.,
-                ),
-            };
-
-            commands.spawn((
-                OnGameScreen,
-                SpriteSheetBundle {
-                    texture_atlas: texture_atlas_handle,
-                    sprite: TextureAtlasSprite::new(animation_indices.first),
-                    transform: Transform {
-                        translation,
-                        scale,
-                        ..default()
-                    },
-                    ..default()
-                },
-                animation_indices,
-                // TODO: 描画フレームは検討の余地あり
-                AnimationTimer(Timer::from_seconds(TIME_1F * 6., TimerMode::Repeating)),
-                PlayerWeapon {
-                    kind: weapon_kind.clone(),
-                    lifetime: Timer::from_seconds(
-                        match weapon_kind {
-                            PlayerWeaponKind::Fire | PlayerWeaponKind::Ice => {
-                                PLAYER_WEAPON_LIFETIME_FOR_FIRE_ICE
-                            }
-                            PlayerWeaponKind::Thunder => PLAYER_WEAPON_LIFETIME_FOR_THUNDER,
-                            PlayerWeaponKind::Sword => PLAYER_WEAPON_LIFETIME_FOR_SWORD,
-                        },
-                        TimerMode::Once,
-                    ),
-                },
-            ));
-
-            // 使用したら回数を1減らす
-            match weapon_kind {
-                PlayerWeaponKind::Fire => player.weapon_limit.fire -= 1,
-                PlayerWeaponKind::Ice => player.weapon_limit.ice -= 1,
-                PlayerWeaponKind::Thunder => player.weapon_limit.thunder -= 1,
-                _ => {}
-            };
-
-            // サンダーは最初だけ一瞬止めるのでタイマーをセット
-            if weapon_kind == PlayerWeaponKind::Thunder {
-                thunder_timer.reset();
-            }
         }
     }
 
