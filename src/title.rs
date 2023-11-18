@@ -34,8 +34,16 @@ pub mod title_scene {
     fn control_keys(
         mut game_state: ResMut<NextState<GameState>>,
         keyboard_input: Res<Input<KeyCode>>,
+        gamepads: Res<Gamepads>,
+        button_inputs: Res<Input<GamepadButton>>,
     ) {
-        if keyboard_input.just_pressed(KeyCode::Z) {
+        let mut pressed = keyboard_input.just_pressed(KeyCode::Z);
+        for gamepad in gamepads.iter() {
+            if button_inputs.just_pressed(GamepadButton::new(gamepad, GamepadButtonType::South)) {
+                pressed = true;
+            }
+        }
+        if pressed {
             game_state.set(GameState::Loading);
         }
     }

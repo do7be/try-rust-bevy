@@ -59,6 +59,8 @@ pub mod ending_scene {
 
     fn control_keys(
         keyboard_input: Res<Input<KeyCode>>,
+        gamepads: Res<Gamepads>,
+        button_inputs: Res<Input<GamepadButton>>,
         mut scene_number: ResMut<SceneNumber>,
         time: Res<Time>,
         mut timer: ResMut<SleepTimer>,
@@ -69,8 +71,15 @@ pub mod ending_scene {
         // タイマーを進める
         timer.tick(time.delta());
 
+        let mut pressed = keyboard_input.just_pressed(KeyCode::Z);
+        for gamepad in gamepads.iter() {
+            if button_inputs.just_pressed(GamepadButton::new(gamepad, GamepadButtonType::South)) {
+                pressed = true;
+            }
+        }
+
         // １秒スリープののち、Zを押したら次のscene imageへ
-        if keyboard_input.just_pressed(KeyCode::Z) && timer.finished() {
+        if pressed && timer.finished() {
             if scene_number.number == 14 {
                 // State全部リセットする
                 game_state.set(GameState::Title);
