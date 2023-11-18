@@ -4,6 +4,7 @@ use try_rust_bevy::consts::*;
 // 各シーン
 mod ending;
 mod game;
+mod initial_load;
 mod loading;
 mod stage_title;
 mod title;
@@ -25,6 +26,7 @@ fn main() {
                     }),
                     ..default()
                 }),
+            initial_load::initial_load_scene::InitialLoadPlugin,
             game::game_scene::GamePlugin,
             title::title_scene::TitlePlugin,
             loading::loading_scene::LoadingPlugin,
