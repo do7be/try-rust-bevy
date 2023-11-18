@@ -1780,37 +1780,36 @@ pub mod game_scene {
                         Vec3::new(
                             TILE_SIZE * 79. + TILE_SIZE * rng.gen_range(0..=20) as f32,
                             TILE_SIZE * (MAP_HEIGHT_TILES - 1) as f32,
-                            1.,
+                            3.,
                         ),
                         Vec3::new(
                             TILE_SIZE * 79. + TILE_SIZE * rng.gen_range(0..=20) as f32,
                             TILE_SIZE * (MAP_HEIGHT_TILES - 1) as f32,
-                            1.,
+                            3.,
                         ),
                         Vec3::new(
                             TILE_SIZE * 79. + TILE_SIZE * rng.gen_range(0..=20) as f32,
                             TILE_SIZE * (MAP_HEIGHT_TILES - 1) as f32,
-                            1.,
+                            3.,
                         ),
                     ],
                     BossWeaponKind::DarkThunder => [
                         Vec3::new(
                             player_transform.translation.x - TILE_SIZE,
                             TILE_SIZE * (MAP_HEIGHT_TILES - 1) as f32,
-                            1.,
+                            3.,
                         ),
                         Vec3::new(
                             player_transform.translation.x,
                             TILE_SIZE * (MAP_HEIGHT_TILES - 1) as f32,
-                            1.,
+                            3.,
                         ),
                         Vec3::new(
                             player_transform.translation.x + TILE_SIZE,
                             TILE_SIZE * (MAP_HEIGHT_TILES - 1) as f32,
-                            1.,
+                            3.,
                         ),
                     ],
-
                     _ => [
                         Vec3::new(
                             if boss_transform.scale.x < 0. {
@@ -1819,7 +1818,7 @@ pub mod game_scene {
                                 boss_transform.translation.x - TILE_SIZE
                             },
                             boss_transform.translation.y - TILE_SIZE / 2.,
-                            2.,
+                            3.,
                         ),
                         Vec3::new(
                             if boss_transform.scale.x < 0. {
@@ -1828,7 +1827,7 @@ pub mod game_scene {
                                 boss_transform.translation.x - TILE_SIZE
                             },
                             boss_transform.translation.y - TILE_SIZE / 2.,
-                            2.,
+                            3.,
                         ),
                         Vec3::new(
                             if boss_transform.scale.x < 0. {
@@ -1837,7 +1836,7 @@ pub mod game_scene {
                                 boss_transform.translation.x - TILE_SIZE
                             },
                             boss_transform.translation.y - TILE_SIZE / 2.,
-                            2.,
+                            3.,
                         ),
                     ],
                 };
@@ -2002,8 +2001,8 @@ pub mod game_scene {
                             enemy_transform.translation.x - TILE_SIZE
                         },
                         enemy_transform.translation.y,
-                        // 壁よりも手前に表示
-                        1.,
+                        // プレイヤーよりも手前に表示
+                        3.,
                     );
 
                     commands.spawn((
