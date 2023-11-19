@@ -1069,6 +1069,8 @@ pub mod game_scene {
                 Direction::Left => player_transform.translation.x - PLAYER_WALK_STEP,
                 Direction::Right => player_transform.translation.x + PLAYER_WALK_STEP,
             };
+            // 画面外には移動できない
+            next_time_translation.x = next_time_translation.x.max(0.);
 
             // 地面に接しているか検査
             if player.grounded {
@@ -1196,6 +1198,15 @@ pub mod game_scene {
                     }
                 }
             }
+        }
+
+        // 上部の画面外にジャンプしようとしたら天井にぶつかったときと同じ処理にする
+        if next_time_translation.y >= TILE_SIZE * (MAP_HEIGHT_TILES - 1) as f32 {
+            player_velocity.y = 0.;
+            player.jump_status.jump = false;
+            player.jump_status.fall_time = 0.;
+            next_time_translation.y = TILE_SIZE * (MAP_HEIGHT_TILES - 1) as f32;
+            player.jump_status.jump_start_y = next_time_translation.y
         }
 
         // 移動を反映
